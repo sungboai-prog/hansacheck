@@ -59,50 +59,29 @@ textarea{resize:none}
 </head>
 <body>
 <div id="app" class="wrap"><div class="muted">불러오는 중…</div></div>
+<script src="config.js"></script>
 <script type="module">
-// =====================================================================
-//  설정 — 이 부분만 바꾸면 돼요 (설치 안내서 참고)
-// =====================================================================
-
-// Firebase 설정값. 비워 두면(null) "체험 모드": 이 폰에만 저장돼요.
-const FIREBASE_CONFIG = null;
-/* 예시 — Firebase 콘솔에서 복사한 값을 이런 모양으로 붙여넣어요:
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBjCenthQXBF-VOdY0xd2Wb33XA8YcPk4M",
-  authDomain: "hansacheck-a3c85.firebaseapp.com",
-  projectId: "hansacheck-a3c85",
-  storageBucket: "hansacheck-a3c85.firebasestorage.app",
-  messagingSenderId: "259931622766",
-  appId: "1:259931622766:web:e4e0efd4626048adbec57f"}
-*/
-
-// 우리 가족만의 이름표 (영문·숫자, 남이 추측하기 어렵게)
-const FAMILY_CODE = "woo-son-0220";
-
-// 부모 모드로 들어갈 때 쓰는 비밀번호 (아이들에게는 비밀!)
-const PARENT_PIN = "0220";
-
-// 아이들 (이름은 별명으로 써도 돼요)
-const KIDS = [
-  { id: "k1", name: "준영", sub: "15살", ink: "#1E4FB8", tint: "#DCE6FB" },
-  { id: "k2", name: "서연", sub: "13살", ink: "#9A4515", tint: "#FBE3D3" },
-  { id: "k3", name: "준서", sub: "11살", ink: "#0F6B5A", tint: "#D5F0EA" }
+// 설정값은 config.js 파일에 있어요 (이 파일은 고치지 않아도 돼요)
+const CFG = window.HSC_CONFIG || {};
+const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || null;
+const FAMILY_CODE = CFG.FAMILY_CODE || "";
+const KIDS = CFG.KIDS || [
+  { id: "k1", name: "첫째", sub: "15살", ink: "#1E4FB8", tint: "#DCE6FB" },
+  { id: "k2", name: "둘째", sub: "13살", ink: "#9A4515", tint: "#FBE3D3" },
+  { id: "k3", name: "셋째", sub: "11살", ink: "#0F6B5A", tint: "#D5F0EA" }
 ];
-const PARENTS = [ { id: "dad", name: "아빠" }, { id: "mom", name: "엄마" } ];
+const PARENTS = CFG.PARENTS || [ { id: "dad", name: "아빠" }, { id: "mom", name: "엄마" } ];
+const DEFAULT_RULES = CFG.DEFAULT_RULES || { days: [false, false, false, false, true, true, true], total: 480, session: 120, rest: 120 };
+const TIMER_SHORTCUT = "핸사췍 타이머";
+const TIMER_STOP_SHORTCUT = "핸사췍 타이머 끄기";
 
-// 처음 규칙 (앱 안 '규칙 바꾸기'에서 언제든 바꿀 수 있어요)
-// days: 월 화 수 목 금 토 일
-const DEFAULT_RULES = { days: [false, false, false, false, true, true, true], total: 480, session: 120, rest: 120 };
-
-// =====================================================================
 const FB_VER = "12.18.0";
 const MIN = 60000;
-const DEMO = !FIREBASE_CONFIG;
+const LOCAL_TEST = !!CFG.LOCAL_TEST;
 const DAY = ["월", "화", "수", "목", "금", "토", "일"];
 const app = document.getElementById("app");
 
-let clockOffset = DEMO ? Number(localStorage.getItem("hsc-offset") || 0) : 0;
-const now = () => Date.now() + clockOffset;
+const now = () => Date.now() + (window.__hscOffset || 0);
 
 // ---------- helpers ----------
 function weekStartOf(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime(); }
@@ -129,9 +108,10 @@ const BACK_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" st
 function localStore() {
   const KEY = "hsc-demo-v1";
   let db = JSON.parse(localStorage.getItem(KEY) || "null") || { rules: DEFAULT_RULES, sessions: {}, requests: {} };
+  db.devices = db.devices || {}; db.codes = db.codes || {};
   let cb = null;
   const list = o => Object.entries(o).map(([id, v]) => Object.assign({ id }, v));
-  const emit = () => cb && cb({ rules: db.rules, sessions: list(db.sessions), requests: list(db.requests) });
+  const emit = () => cb && cb({ rules: db.rules, sessions: list(db.sessions), requests: list(db.requests), devices: list(db.devices), devicesReady: true });
   const save = () => { localStorage.setItem(KEY, JSON.stringify(db)); emit(); };
   const nid = () => Math.random().toString(36).slice(2, 10);
   window.addEventListener("storage", e => { if (e.key === KEY && e.newValue) { db = JSON.parse(e.newValue); emit(); } });
@@ -143,7 +123,10 @@ function localStore() {
     deleteSession(k) { delete db.sessions[k]; save(); },
     addRequest(o) { const k = nid(); db.requests[k] = o; save(); return k; },
     updateRequest(k, p) { if (db.requests[k]) { Object.assign(db.requests[k], p); save(); } },
-    reset() { localStorage.removeItem(KEY); db = { rules: DEFAULT_RULES, sessions: {}, requests: {} }; save(); }
+    setDevice(k, o) { db.devices[k] = Object.assign(db.devices[k] || {}, o); save(); },
+    deleteDevice(k) { delete db.devices[k]; save(); },
+    createCode(c, o) { db.codes[c] = o; save(); },
+    async redeemCode(c) { const o = db.codes[c] || null; if (o) { delete db.codes[c]; save(); } return o; }
   };
 }
 
@@ -159,7 +142,7 @@ async function firebaseStore(onErr) {
   const col = n => F.collection(db, "families", FAMILY_CODE, n);
   const settingsRef = F.doc(db, "families", FAMILY_CODE, "meta", "settings");
   const since = weekStartOf(Date.now()) - 7 * 24 * 60 * MIN;
-  let st = { rules: DEFAULT_RULES, sessions: [], requests: [] }, cb = null;
+  let st = { rules: DEFAULT_RULES, sessions: [], requests: [], devices: [], devicesReady: false }, cb = null;
   const emit = () => cb && cb(st);
   const fail = e => onErr(e);
   return {
@@ -168,13 +151,22 @@ async function firebaseStore(onErr) {
       F.onSnapshot(settingsRef, s => { st = Object.assign({}, st, { rules: (s.exists() && s.data().rules) || DEFAULT_RULES }); emit(); }, fail);
       F.onSnapshot(F.query(col("sessions"), F.where("start", ">=", since)), q => { st = Object.assign({}, st, { sessions: q.docs.map(d => Object.assign({ id: d.id }, d.data())) }); emit(); }, fail);
       F.onSnapshot(F.query(col("requests"), F.where("created", ">=", since)), q => { st = Object.assign({}, st, { requests: q.docs.map(d => Object.assign({ id: d.id }, d.data())) }); emit(); }, fail);
+      F.onSnapshot(col("devices"), q => { st = Object.assign({}, st, { devices: q.docs.map(d => Object.assign({ id: d.id }, d.data())), devicesReady: true }); emit(); }, fail);
     },
     setRules(r) { F.setDoc(settingsRef, { rules: r }, { merge: true }).catch(fail); },
     addSession(o) { const ref = F.doc(col("sessions")); F.setDoc(ref, o).catch(fail); return ref.id; },
     updateSession(k, p) { F.updateDoc(F.doc(col("sessions"), k), p).catch(fail); },
     deleteSession(k) { F.deleteDoc(F.doc(col("sessions"), k)).catch(fail); },
     addRequest(o) { const ref = F.doc(col("requests")); F.setDoc(ref, o).catch(fail); return ref.id; },
-    updateRequest(k, p) { F.updateDoc(F.doc(col("requests"), k), p).catch(fail); }
+    updateRequest(k, p) { F.updateDoc(F.doc(col("requests"), k), p).catch(fail); },
+    setDevice(k, o) { F.setDoc(F.doc(col("devices"), k), o, { merge: true }).catch(fail); },
+    deleteDevice(k) { F.deleteDoc(F.doc(col("devices"), k)).catch(fail); },
+    createCode(c, o) { F.setDoc(F.doc(col("codes"), c), o).catch(fail); },
+    async redeemCode(c) {
+      const ref = F.doc(col("codes"), c); const snap = await F.getDoc(ref);
+      if (!snap.exists()) return null;
+      await F.deleteDoc(ref); return snap.data();
+    }
   };
 }
 
@@ -222,16 +214,70 @@ function rulesText(R) {
 // ---------- app state ----------
 let store = null, S = null, loadError = null;
 let role = localStorage.getItem("hsc-role");
-const ui = { screen: "home", kid: null, plan: 60, reason: "", reqMin: 30, pin: "", pinFor: null, pinBad: false, draft: null, confirmDel: null, lastStop: null, msg: null };
+let deviceId = localStorage.getItem("hsc-device");
+if (!deviceId) { const a = new Uint8Array(8); crypto.getRandomValues(a); deviceId = Array.from(a, b => b.toString(16).padStart(2, "0")).join(""); localStorage.setItem("hsc-device", deviceId); }
+const ui = { screen: "home", kid: null, plan: 60, reason: "", reqMin: 30, code: "", codeBad: "", codeBusy: false, newCode: null, draft: null, confirmDel: null, confirmDev: null, lastStop: null, alarm: null,
+  phoneTimer: localStorage.getItem("hsc-phone-timer") === "1" };
+const alarmed = new Set();
 const autoDone = new Set();
 let holding = null, holdTimer = null, pendingRender = false, lastHtml = "";
 
-function setRole(r) { role = r; localStorage.setItem("hsc-role", r); ui.screen = "home"; ui.pin = ""; ui.pinFor = null; render(); }
+function setRole(r) {
+  role = r;
+  if (r) { localStorage.setItem("hsc-role", r); localStorage.setItem("hsc-registered", "1"); store.setDevice(deviceId, { role: r, name: roleName(r), added: now(), ua: navigator.userAgent.slice(0, 120) }); }
+  else { localStorage.removeItem("hsc-role"); localStorage.removeItem("hsc-registered"); }
+  ui.screen = "home"; ui.code = ""; ui.codeBad = ""; render();
+}
+// keep this phone's role in step with the family's device list
+function syncDevice() {
+  if (!S || !S.devicesReady) return;
+  const me = S.devices.find(d => d.id === deviceId);
+  if (me && me.role && me.role !== role) { role = me.role; localStorage.setItem("hsc-role", role); localStorage.setItem("hsc-registered", "1"); }
+  else if (!me && role) {
+    if (localStorage.getItem("hsc-registered") === "1") { role = null; localStorage.removeItem("hsc-role"); localStorage.removeItem("hsc-registered"); }
+    else setRole(role);   // phone set up with the earlier version: register it once
+  }
+}
+
+// ---------- sound ----------
+let audioCtx = null;
+function unlockAudio() {
+  try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === "suspended") audioCtx.resume(); } catch (e) {}
+}
+function beep(times, gap, freq) {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime + 0.05;
+  for (let i = 0; i < times; i++) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "sine"; o.frequency.value = freq || 880;
+    g.gain.setValueAtTime(0.0001, t0 + i * gap); g.gain.exponentialRampToValueAtTime(0.5, t0 + i * gap + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * gap + 0.35);
+    o.connect(g); g.connect(audioCtx.destination); o.start(t0 + i * gap); o.stop(t0 + i * gap + 0.4);
+  }
+}
+let alarmLoop = null;
+function startAlarm() { stopAlarm(); beep(6, 0.5, 988); alarmLoop = setInterval(() => beep(6, 0.5, 988), 4000); setTimeout(stopAlarm, 60000); }
+function stopAlarm() { if (alarmLoop) { clearInterval(alarmLoop); alarmLoop = null; } }
+function checkAlarms(t) {
+  const kid = kidById(role); if (!kid || !S) return;
+  for (const s of S.sessions) {
+    if (s.kid !== kid.id || s.how === "undo") continue;
+    const end = s.start + s.plan * MIN;
+    if (s.end == null && t < end) {
+      const left = (end - t) / MIN;
+      for (const w of [10, 5]) if (left <= w && left > w - 1 && s.plan > w && !alarmed.has(s.id + ":" + w)) { alarmed.add(s.id + ":" + w); beep(2, 0.4, 660); }
+    }
+    if (s.how === "auto" && t >= end && t - end < 2 * MIN && !alarmed.has(s.id + ":end")) { alarmed.add(s.id + ":end"); ui.alarm = s.id; startAlarm(); }
+    if (s.end == null && t >= end && !alarmed.has(s.id + ":end")) { alarmed.add(s.id + ":end"); ui.alarm = s.id; startAlarm(); }
+  }
+}
+const shortcutUrl = (name, text) => "shortcuts://run-shortcut?name=" + encodeURIComponent(name) + (text != null ? "&input=text&text=" + encodeURIComponent(text) : "");
 
 // ---------- rendering ----------
 function render() {
   if (holding) { pendingRender = true; return; }
   pendingRender = false;
+  if (!FIREBASE_CONFIG && !LOCAL_TEST) { app.innerHTML = `<h1>핸사췍</h1><div class="err">config.js 파일을 찾지 못했거나 Firebase 설정값이 비어 있어요.<br>config.js를 index.html과 같은 곳에 올렸는지 확인해 주세요.</div>`; return; }
   if (loadError) { app.innerHTML = `<h1>핸사췍</h1><div class="err">연결에 문제가 있어요: ${esc(loadError)}<br>설치 안내서의 Firebase 설정(익명 로그인, 보안 규칙)을 확인해 주세요.</div>`; return; }
   if (!S) return;
   const t = now();
@@ -240,41 +286,68 @@ function render() {
       autoDone.add(s.id); store.updateSession(s.id, { end: s.start + s.plan * MIN, how: "auto" });
     }
   }
+  syncDevice();
+  if (!isParent(role)) checkAlarms(t);
   let html;
-  if (!role || ui.screen === "role") html = viewRole();
-  else if (ui.pinFor) html = viewPin();
-  else if (isParent(role)) html = ui.screen === "rules" ? viewRules() : ui.screen === "kid" ? viewParentKid(t) : viewParentHome(t);
-  else html = viewKid(kidById(role), t);
-  if (DEMO) html += viewDemo();
+  if (!S.devicesReady) html = `<div class="muted">불러오는 중…</div>`;
+  else if (!role) html = viewSetup();
+  else if (isParent(role)) html = ui.screen === "rules" ? viewRules() : ui.screen === "kid" ? viewParentKid(t) : ui.screen === "devices" ? viewDevices(t) : viewParentHome(t);
+  else html = (ui.alarm ? viewAlarm(kidById(role)) : "") + viewKid(kidById(role), t);
   if (html === lastHtml) return;
   lastHtml = html;
   app.innerHTML = html;
 }
 
-function viewRole() {
-  const first = !role;
-  return `
-  <div class="col"><div class="muted">${first ? "처음 한 번만 정하면 돼요" : "부모 확인 완료"}</div><h1>이 폰은 누구 폰인가요?</h1></div>
+function viewSetup() {
+  const hasParent = S.devices.some(d => isParent(d.role));
+  if (!hasParent) return `
+  <div class="col"><div class="muted">처음 설정</div><h1>부모 폰부터 등록해요</h1></div>
   <div class="card">
-    <div class="t">아이</div>
-    ${KIDS.map(k => `<button class="btn" data-act="pickRole" data-arg="${k.id}" style="display:flex;align-items:center;gap:12px;text-align:left">
-      <span class="avatar" style="background:${k.tint};color:${k.ink};width:34px;height:34px">${esc(k.name[0])}</span><span>${esc(k.name)} <span class="muted">${esc(k.sub)}</span></span></button>`).join("")}
-    <div class="t" style="margin-top:6px">부모</div>
-    ${PARENTS.map(p => `<button class="btn" data-act="pickRole" data-arg="${p.id}">${esc(p.name)} (비밀번호 필요)</button>`).join("")}
-  </div>
-  ${first ? "" : `<button class="btn ghost" data-act="cancelRole">취소</button>`}`;
+    <div class="muted">아직 등록된 부모 폰이 없어서, 이 폰을 부모 폰으로 바로 등록할 수 있어요. 아이 폰들은 그다음에 부모 폰에서 만든 코드로 연결해요.</div>
+    ${PARENTS.map(p => `<button class="btn primary" data-act="firstParent" data-arg="${p.id}">이 폰은 ${esc(p.name)} 폰이에요</button>`).join("")}
+  </div>`;
+  return `
+  <div class="col"><div class="muted">기기 연결</div><h1>연결 코드를 입력하세요</h1></div>
+  <div class="card">
+    <div class="muted">아빠나 엄마 폰의 핸사췍에서 <b>기기 관리 → 새 기기 연결 코드</b>를 누르면 6자리 코드가 나와요. 코드에 이 폰의 주인이 정해져 있어요.</div>
+    <label for="code" class="muted">연결 코드 6자리</label>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="${esc(ui.code)}" data-input="code" style="font-size:24px;letter-spacing:6px;text-align:center">
+    ${ui.codeBad ? `<div class="err">${esc(ui.codeBad)}</div>` : ""}
+    <button class="btn primary" data-act="redeem" ${ui.codeBusy ? "disabled" : ""}>${ui.codeBusy ? "확인 중…" : "연결하기"}</button>
+  </div>`;
 }
 
-function viewPin() {
+function viewDevices(t) {
+  const devs = S.devices.slice().sort((a, b) => (a.added || 0) - (b.added || 0));
+  const nc = ui.newCode && ui.newCode.expires > t ? ui.newCode : null;
   return `
-  <div class="row" style="justify-content:flex-start"><button class="back" aria-label="뒤로" data-act="cancelPin">${BACK_SVG}</button><h2>부모 비밀번호</h2></div>
+  <div class="row" style="justify-content:flex-start"><button class="back" aria-label="뒤로" data-act="home">${BACK_SVG}</button><h2>기기 관리</h2></div>
   <div class="card">
-    <label for="pin" class="muted">${ui.pinFor === "switch" ? "폰 주인을 바꾸려면 부모 비밀번호가 필요해요" : roleName(ui.pinFor) + " 모드로 들어가려면 비밀번호를 입력하세요"}</label>
-    <input id="pin" type="password" inputmode="numeric" autocomplete="off" value="${esc(ui.pin)}" data-input="pin">
-    ${ui.pinBad ? `<div class="err">비밀번호가 달라요</div>` : ""}
-    <button class="btn primary" data-act="checkPin">확인</button>
-    ${DEMO ? `<div class="muted">체험 모드 비밀번호: ${esc(PARENT_PIN)}</div>` : ""}
+    <div class="t">새 기기 연결 코드</div>
+    <div class="muted">폰 주인을 고르면 10분 동안 쓸 수 있는 일회용 코드가 나와요. 그 폰의 핸사췍에 입력하면 연결돼요.</div>
+    ${nc ? `<div class="banner" style="background:#E3EDFD;color:#1E4FB8;text-align:center">
+        <div style="font-size:13px">${esc(roleName(nc.role))} 폰 연결 코드</div>
+        <div style="font-size:36px;letter-spacing:8px;font-weight:800">${nc.code}</div>
+        <div style="font-size:12px;font-weight:600">${fmtClock(nc.expires)}까지 유효 · 한 번만 쓸 수 있어요</div></div>` : ""}
+    <div class="grid3">${KIDS.concat(PARENTS).map(r => `<button class="opt" data-act="makeCode" data-arg="${r.id}">${esc(r.name)}</button>`).join("")}</div>
+  </div>
+  <div class="card" style="gap:4px">
+    <div class="t" style="padding-bottom:6px">연결된 기기</div>
+    ${devs.map(d => {
+      const mine = d.id === deviceId, conf = ui.confirmDev === d.id;
+      return `<div class="log"><div class="col" style="flex:1"><div style="font-size:14px;font-weight:700">${esc(roleName(d.role) || d.role)} 폰${mine ? " (지금 이 폰)" : ""}</div>
+        <div class="muted" style="font-size:12px">${d.added ? fmtDay(d.added) + " 연결" : ""}</div></div>
+        ${mine ? "" : conf ? `<button class="btn small danger" data-act="removeDev" data-arg="${d.id}">연결 해제</button>` : `<button class="btn small" data-act="askDev" data-arg="${d.id}">해제</button>`}</div>`;
+    }).join("")}
+    <div class="muted" style="padding-top:8px">연결을 해제하면 그 폰은 처음 화면으로 돌아가고, 새 코드가 있어야 다시 쓸 수 있어요. 폰 주인을 바꿀 때도 해제한 뒤 새 코드로 연결하세요.</div>
   </div>`;
+}
+
+function viewAlarm(kid) {
+  return `<div class="banner" role="alert" style="background:#C2410C;color:#fff;display:flex;flex-direction:column;gap:10px;align-items:stretch;text-align:center">
+    <div style="font-size:20px">계획한 시간이 끝났어요!</div>
+    <div style="font-size:14px;font-weight:600">폰을 내려놓을 시간이에요</div>
+    <button class="btn" data-act="alarmOk">알겠어요</button></div>`;
 }
 
 function ring(remainRatio, color, inner) {
@@ -297,8 +370,9 @@ function viewKid(kid, t) {
       ${warn ? `<div class="banner" style="background:#FDF0E1;color:#8A4310;text-align:center">곧 끝나요! 마무리하고 직접 정지해 봐요</div>` : ""}
       <button class="hold" data-hold="stop" style="background:var(--ink)"><div class="fill"></div><span>정지 · 1초 꾹 누르기</span></button>
       ${t - s.start < MIN ? `<button class="btn" data-act="undo">실수로 눌렀어요 · 시작 취소 (기록 안 남음)</button>` : ""}
+      ${ui.phoneTimer && !alarmed.has(s.id + ":timer") ? `<a class="btn primary" style="display:flex;align-items:center;justify-content:center;text-decoration:none" data-act="timerSet" data-arg="${s.id}" href="${shortcutUrl(TIMER_SHORTCUT, Math.ceil(remain))}">아이폰 타이머 맞추기 (${fmt(Math.ceil(remain))})</a>` : ""}
     </div>
-    <div class="card muted">정지를 깜빡해도 계획한 시간이 끝나면 자동으로 멈춘 것으로 기록돼요. 단, 스스로 멈춰야 칭찬 기록이 쌓여요!</div>`;
+    <div class="card muted">끝나기 10분 전·5분 전에 소리로 알려 주고, 끝나면 알람이 울려요. 앱을 닫아 두면 소리가 안 나니${ui.phoneTimer ? " 아이폰 타이머를 꼭 맞춰 두세요." : " 아래 '아이폰 타이머 함께 쓰기'를 켜 두세요."}</div>`;
   } else if (st.state === "off") {
     body = `<div class="card"><h2>오늘은 쉬는 날이에요</h2><div class="muted">다음 사용일: ${nextAllowedText(R, t)}</div></div>`;
   } else if (st.state === "weekdone") {
@@ -311,8 +385,9 @@ function viewKid(kid, t) {
       <div class="muted" style="text-align:center">${fmt(R.session)} 썼으니 ${fmt(R.rest)} 쉬어요 · ${fmtClock(st.restUntil)}부터 다시 쓸 수 있어요</div>
     </div>`;
   } else {
-    let opts = [15, 30, 45, 60, 90, 120].filter(m => m <= st.maxPlan);
-    if (st.maxPlan >= 5 && !opts.includes(st.maxPlan) && st.maxPlan < 120) opts.push(st.maxPlan);
+    let opts = [];
+    for (let m = 30; m <= Math.min(st.maxPlan, R.session); m += 30) opts.push(m);
+    if (opts.length === 0 && st.maxPlan >= 5) opts.push(st.maxPlan);
     if (!opts.includes(ui.plan)) ui.plan = opts.includes(60) ? 60 : opts[opts.length - 1];
     body = opts.length === 0 ? `<div class="card"><h2>남은 시간이 너무 적어요</h2><div class="muted">${fmt(st.maxPlan)} 남았어요</div></div>` : `
     <div class="card">
@@ -327,7 +402,7 @@ function viewKid(kid, t) {
   if (ls && t - ls.at < MIN) {
     const s = S.sessions.find(x => x.id === ls.id);
     if (s && s.how === "self" && t < s.start + s.plan * MIN && st.state !== "running")
-      after = `<div class="banner" style="background:${kid.ink};color:#fff">스스로 멈췄어요. 멋져요!</div><button class="btn" data-act="resume">실수로 멈췄어요 · 이어서 쓰기 (1분 안에만)</button>`;
+      after = `<div class="banner" style="background:${kid.ink};color:#fff">스스로 멈췄어요. 멋져요!</div>${ui.phoneTimer ? `<a class="btn" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="${shortcutUrl(TIMER_STOP_SHORTCUT)}">아이폰 타이머 끄기</a>` : ""}<button class="btn" data-act="resume">실수로 멈췄어요 · 이어서 쓰기 (1분 안에만)</button>`;
   }
   let req = "";
   if (st.state !== "running") {
@@ -355,7 +430,8 @@ function viewKid(kid, t) {
   </div>
   ${req}
   <div class="muted" style="padding:0 6px">우리 집 규칙: ${rulesText(R)}</div>
-  <button class="btn ghost" data-act="switchRole">폰 주인 바꾸기 (부모 비밀번호)</button>`;
+  <div class="card"><label class="row" style="cursor:pointer"><span class="col"><span class="t">아이폰 타이머 함께 쓰기</span><span class="muted">앱을 닫아도 알람이 울려요 (단축어 2개 필요)</span></span>
+    <input type="checkbox" data-act="togglePhoneTimer" ${ui.phoneTimer ? "checked" : ""} style="width:28px;height:28px;flex-shrink:0"></label></div>`;
 }
 
 function kidLine(st) {
@@ -396,7 +472,7 @@ function viewParentHome(t) {
         <div class="row" style="font-size:12px"><span class="muted">${kidLine(st)}</span><span style="font-weight:700;white-space:nowrap">스스로 정지 ${st.selfN}/${st.doneN}</span></div>
       </div></button>`;
   }).join("")}
-  <button class="btn ghost" data-act="switchRole">폰 주인 바꾸기</button>`;
+  <button class="btn" data-act="openDevices">기기 관리 · 새 기기 연결</button>`;
 }
 
 function viewParentKid(t) {
@@ -450,23 +526,33 @@ function viewRules() {
   <button class="btn primary" style="min-height:52px" data-act="saveRules">저장하기</button>`;
 }
 
-function viewDemo() {
-  return `<div class="demo"><b>체험 모드</b><span>이 폰에만 저장돼요 · 시계 ${clockOffset ? "+" + fmt(clockOffset / MIN) : "정상"}</span>
-    <button class="btn small" data-act="clock" data-arg="10">+10분</button><button class="btn small" data-act="clock" data-arg="60">+1시간</button>
-    <button class="btn small" data-act="clock" data-arg="1440">+1일</button><button class="btn small" data-act="demoReset">처음부터</button></div>`;
-}
-
 // ---------- actions ----------
 const actions = {
-  pickRole(a) { if (isParent(a)) { ui.pinFor = a; ui.pin = ""; ui.pinBad = false; ui.screen = "home"; render(); } else setRole(a); },
-  cancelRole() { ui.screen = "home"; render(); },
-  switchRole() { if (isParent(role)) { ui.screen = "role"; render(); } else { ui.pinFor = "switch"; ui.pin = ""; ui.pinBad = false; render(); } },
-  cancelPin() { ui.pinFor = null; render(); },
-  checkPin() {
-    if (ui.pin !== PARENT_PIN) { ui.pinBad = true; render(); return; }
-    const f = ui.pinFor; ui.pinFor = null; ui.pin = "";
-    if (f === "switch") { ui.screen = "role"; render(); } else setRole(f);
+  firstParent(a) { if (!S.devices.some(d => isParent(d.role))) setRole(a); },
+  async redeem() {
+    const c = (ui.code || "").replace(/\D/g, "");
+    if (c.length !== 6) { ui.codeBad = "6자리 숫자를 입력하세요"; render(); return; }
+    ui.codeBusy = true; ui.codeBad = ""; render();
+    try {
+      const o = await store.redeemCode(c);
+      ui.codeBusy = false;
+      if (!o) { ui.codeBad = "없는 코드예요. 부모 폰에서 새로 만들어 주세요"; render(); return; }
+      if (o.expires < Date.now()) { ui.codeBad = "시간이 지난 코드예요. 새로 만들어 주세요"; render(); return; }
+      setRole(o.role);
+    } catch (e) { ui.codeBusy = false; ui.codeBad = "확인하지 못했어요: " + (e.code || e.message); render(); }
   },
+  openDevices() { ui.screen = "devices"; ui.confirmDev = null; render(); window.scrollTo(0, 0); },
+  makeCode(r) {
+    const a = new Uint32Array(1); crypto.getRandomValues(a);
+    const code = String(a[0] % 1000000).padStart(6, "0"), expires = Date.now() + 10 * MIN;
+    store.createCode(code, { role: r, expires, by: role });
+    ui.newCode = { code, role: r, expires }; render();
+  },
+  askDev(id) { ui.confirmDev = id; render(); },
+  removeDev(id) { store.deleteDevice(id); ui.confirmDev = null; },
+  alarmOk() { stopAlarm(); ui.alarm = null; render(); },
+  timerSet(id) { alarmed.add(id + ":timer"); setTimeout(render, 500); },
+  togglePhoneTimer() { ui.phoneTimer = !ui.phoneTimer; localStorage.setItem("hsc-phone-timer", ui.phoneTimer ? "1" : "0"); render(); },
   plan(a) { ui.plan = Number(a); render(); },
   reqMin(a) { ui.reqMin = Number(a); render(); },
   undo() { const st = kidStatus(kidById(role), S, now()); if (st.open) store.updateSession(st.open.id, { end: st.open.start, how: "undo" }); },
@@ -488,8 +574,6 @@ const actions = {
   parentStop(id) { store.updateSession(id, { end: now(), how: "parent" }); },
   askDel(id) { ui.confirmDel = id; render(); },
   delSession(id) { store.deleteSession(id); ui.confirmDel = null; },
-  clock(m) { clockOffset += Number(m) * MIN; localStorage.setItem("hsc-offset", String(clockOffset)); render(); },
-  demoReset() { clockOffset = 0; localStorage.setItem("hsc-offset", "0"); store.reset(); }
 };
 function doHold(kind) {
   const kid = kidById(role); if (!kid) return;
@@ -511,7 +595,8 @@ app.addEventListener("click", e => {
 app.addEventListener("input", e => {
   const k = e.target.dataset && e.target.dataset.input; if (k) ui[k] = e.target.value;
 });
-app.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "pin") actions.checkPin(); });
+app.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "code") actions.redeem(); });
+document.addEventListener("pointerdown", unlockAudio, true);
 // hold-to-press (1 second)
 app.addEventListener("pointerdown", e => {
   const b = e.target.closest("[data-hold]"); if (!b) return;
@@ -539,7 +624,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) rend
 // ---------- start ----------
 (async () => {
   try {
-    store = DEMO ? localStore() : await firebaseStore(e => { loadError = (e && (e.code || e.message)) || String(e); render(); });
+    if (!FIREBASE_CONFIG && !LOCAL_TEST) { render(); return; }
+    store = LOCAL_TEST ? localStore() : await firebaseStore(e => { loadError = (e && (e.code || e.message)) || String(e); render(); });
     store.start(s => { S = s; render(); });
   } catch (e) {
     loadError = (e && (e.code || e.message)) || String(e); render();
