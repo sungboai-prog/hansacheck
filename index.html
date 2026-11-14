@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="핸사췍">
+<meta name="theme-color" content="#F4F5F7">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<title>핸사췍</title>
+<style>
+:root{--bg:#F4F5F7;--ink:#1A1D23;--mute:#5B616E;--line:#ECEEF1;--blue:#2F6FED;--blueD:#1E4FB8}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;-webkit-text-size-adjust:100%}
+.wrap{max-width:480px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 28px);display:flex;flex-direction:column;gap:12px}
+.card{background:#fff;border-radius:20px;padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.5px}
+h2{margin:0;font-size:18px;font-weight:800}
+.t{font-size:15px;font-weight:700}
+.muted{color:var(--mute);font-size:13px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.col{display:flex;flex-direction:column;gap:2px}
+button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:disabled{opacity:.4;cursor:default}
+.btn{min-height:48px;border-radius:14px;border:1px solid #D5D8DE;background:#fff;color:var(--ink);font-size:15px;font-weight:700;padding:0 16px}
+.btn.primary{background:var(--blue);border:none;color:#fff}
+.btn.dark{background:var(--ink);border:none;color:#fff}
+.btn.danger{background:#FDE7E2;border:none;color:#A3270F}
+.btn.small{min-height:40px;font-size:13px;padding:0 12px;border-radius:12px}
+.btn.ghost{border:none;background:transparent;color:var(--mute);font-weight:600;font-size:13px;min-height:44px}
+.hold{position:relative;overflow:hidden;min-height:64px;border-radius:18px;border:none;color:#fff;font-size:17px;font-weight:800;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;width:100%}
+.hold .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(0,0,0,.3);transition:width .15s ease-out}
+.hold.holding .fill{width:100%;transition:width 1s linear}
+.hold span{position:relative;pointer-events:none}
+.pill{padding:5px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar>div{height:100%;border-radius:4px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.opt{min-height:48px;border-radius:12px;border:1px solid #D5D8DE;background:#fff;font-size:15px;font-weight:700;color:var(--ink);padding:0 4px}
+.opt.on{border:2px solid var(--blue);background:#E3EDFD;color:var(--blueD)}
+.ring{width:200px;height:200px;border-radius:100px;display:flex;align-items:center;justify-content:center;align-self:center}
+.ring>div{width:164px;height:164px;border-radius:82px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center}
+.avatar{width:42px;height:42px;border-radius:21px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0}
+.kidcard{text-align:left;width:100%;border:none;background:#fff;border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;color:var(--ink)}
+input,textarea{font:inherit;font-size:16px;border:1px solid #D5D8DE;border-radius:12px;padding:10px 12px;width:100%;background:#fff;color:var(--ink)}
+textarea{resize:none}
+.demo{border:1px dashed #9AA3AE;border-radius:12px;padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:#4B5160}
+.banner{border-radius:14px;padding:12px 14px;font-size:14px;font-weight:700}
+.log{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.stepper{display:flex;align-items:center;justify-content:space-between}
+.round{width:48px;height:48px;border-radius:24px;border:1px solid #D5D8DE;background:#fff;font-size:24px;color:var(--ink)}
+.back{width:44px;height:44px;border:none;background:transparent;border-radius:22px;display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.err{background:#FDE7E2;color:#A3270F;border-radius:14px;padding:12px 14px;font-size:13px}
+</style>
+</head>
+<body>
+<div id="app" class="wrap"><div class="muted">불러오는 중…</div></div>
+<script type="module">
+// =====================================================================
+//  설정 — 이 부분만 바꾸면 돼요 (설치 안내서 참고)
+// =====================================================================
+
+// Firebase 설정값. 비워 두면(null) "체험 모드": 이 폰에만 저장돼요.
+const FIREBASE_CONFIG = null;
+/* 예시 — Firebase 콘솔에서 복사한 값을 이런 모양으로 붙여넣어요:
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBjCenthQXBF-VOdY0xd2Wb33XA8YcPk4M",
+  authDomain: "hansacheck-a3c85.firebaseapp.com",
+  projectId: "hansacheck-a3c85",
+  storageBucket: "hansacheck-a3c85.firebasestorage.app",
+  messagingSenderId: "259931622766",
+  appId: "1:259931622766:web:e4e0efd4626048adbec57f"}
+*/
+
+// 우리 가족만의 이름표 (영문·숫자, 남이 추측하기 어렵게)
+const FAMILY_CODE = "woo-son-0220";
+
+// 부모 모드로 들어갈 때 쓰는 비밀번호 (아이들에게는 비밀!)
+const PARENT_PIN = "0220";
+
+// 아이들 (이름은 별명으로 써도 돼요)
+const KIDS = [
+  { id: "k1", name: "준영", sub: "15살", ink: "#1E4FB8", tint: "#DCE6FB" },
+  { id: "k2", name: "서연", sub: "13살", ink: "#9A4515", tint: "#FBE3D3" },
+  { id: "k3", name: "준서", sub: "11살", ink: "#0F6B5A", tint: "#D5F0EA" }
+];
+const PARENTS = [ { id: "dad", name: "아빠" }, { id: "mom", name: "엄마" } ];
+
+// 처음 규칙 (앱 안 '규칙 바꾸기'에서 언제든 바꿀 수 있어요)
+// days: 월 화 수 목 금 토 일
+const DEFAULT_RULES = { days: [false, false, false, false, true, true, true], total: 480, session: 120, rest: 120 };
+
+// =====================================================================
+const FB_VER = "12.18.0";
+const MIN = 60000;
+const DEMO = !FIREBASE_CONFIG;
+const DAY = ["월", "화", "수", "목", "금", "토", "일"];
+const app = document.getElementById("app");
+
+let clockOffset = DEMO ? Number(localStorage.getItem("hsc-offset") || 0) : 0;
+const now = () => Date.now() + clockOffset;
+
+// ---------- helpers ----------
+function weekStartOf(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime(); }
+function dayIdx(t) { return (new Date(t).getDay() + 6) % 7; }
+function fmt(m) {
+  m = Math.max(0, Math.round(m)); const h = Math.floor(m / 60), r = m % 60;
+  if (h === 0) return r + "분"; if (r === 0) return h + "시간"; return h + "시간 " + r + "분";
+}
+function fmtClock(t) { const d = new Date(t); let h = d.getHours(); const m = d.getMinutes(); const ap = h < 12 ? "오전" : "오후"; h = h % 12 || 12; return ap + " " + h + ":" + String(m).padStart(2, "0"); }
+function fmtDay(t) { return DAY[dayIdx(t)] + " " + fmtClock(t); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+const kidById = id => KIDS.find(k => k.id === id);
+const roleName = id => (KIDS.find(k => k.id === id) || PARENTS.find(p => p.id === id) || {}).name || "";
+const isParent = id => PARENTS.some(p => p.id === id);
+const pill = (t, bg, fg) => `<span class="pill" style="background:${bg};color:${fg}">${t}</span>`;
+const STATE_PILL = {
+  running: ["사용 중", "#E3EDFD", "#1E4FB8"], rest: ["휴식 중", "#FDF0E1", "#8A4310"], ready: ["사용 가능", "#E1F3EE", "#0F6B5A"],
+  off: ["쉬는 날", "#ECEEF1", "#4B5160"], weekdone: ["이번 주 끝", "#FDE7E2", "#A3270F"]
+};
+const TAG = { self: ["스스로 정지", "#E1F3EE", "#0F6B5A"], auto: ["자동 정지", "#FDF0E1", "#8A4310"], parent: ["부모가 정지", "#ECEEF1", "#4B5160"], running: ["사용 중", "#E3EDFD", "#1E4FB8"] };
+const BACK_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>`;
+
+// ---------- storage: demo (this phone only) ----------
+function localStore() {
+  const KEY = "hsc-demo-v1";
+  let db = JSON.parse(localStorage.getItem(KEY) || "null") || { rules: DEFAULT_RULES, sessions: {}, requests: {} };
+  let cb = null;
+  const list = o => Object.entries(o).map(([id, v]) => Object.assign({ id }, v));
+  const emit = () => cb && cb({ rules: db.rules, sessions: list(db.sessions), requests: list(db.requests) });
+  const save = () => { localStorage.setItem(KEY, JSON.stringify(db)); emit(); };
+  const nid = () => Math.random().toString(36).slice(2, 10);
+  window.addEventListener("storage", e => { if (e.key === KEY && e.newValue) { db = JSON.parse(e.newValue); emit(); } });
+  return {
+    start(f) { cb = f; emit(); },
+    setRules(r) { db.rules = r; save(); },
+    addSession(o) { const k = nid(); db.sessions[k] = o; save(); return k; },
+    updateSession(k, p) { if (db.sessions[k]) { Object.assign(db.sessions[k], p); save(); } },
+    deleteSession(k) { delete db.sessions[k]; save(); },
+    addRequest(o) { const k = nid(); db.requests[k] = o; save(); return k; },
+    updateRequest(k, p) { if (db.requests[k]) { Object.assign(db.requests[k], p); save(); } },
+    reset() { localStorage.removeItem(KEY); db = { rules: DEFAULT_RULES, sessions: {}, requests: {} }; save(); }
+  };
+}
+
+// ---------- storage: Firebase (shared by the whole family) ----------
+async function firebaseStore(onErr) {
+  const base = "https://www.gstatic.com/firebasejs/" + FB_VER + "/";
+  const { initializeApp } = await import(base + "firebase-app.js");
+  const { getAuth, signInAnonymously } = await import(base + "firebase-auth.js");
+  const F = await import(base + "firebase-firestore.js");
+  const fapp = initializeApp(FIREBASE_CONFIG);
+  await signInAnonymously(getAuth(fapp));
+  const db = F.getFirestore(fapp);
+  const col = n => F.collection(db, "families", FAMILY_CODE, n);
+  const settingsRef = F.doc(db, "families", FAMILY_CODE, "meta", "settings");
+  const since = weekStartOf(Date.now()) - 7 * 24 * 60 * MIN;
+  let st = { rules: DEFAULT_RULES, sessions: [], requests: [] }, cb = null;
+  const emit = () => cb && cb(st);
+  const fail = e => onErr(e);
+  return {
+    start(f) {
+      cb = f;
+      F.onSnapshot(settingsRef, s => { st = Object.assign({}, st, { rules: (s.exists() && s.data().rules) || DEFAULT_RULES }); emit(); }, fail);
+      F.onSnapshot(F.query(col("sessions"), F.where("start", ">=", since)), q => { st = Object.assign({}, st, { sessions: q.docs.map(d => Object.assign({ id: d.id }, d.data())) }); emit(); }, fail);
+      F.onSnapshot(F.query(col("requests"), F.where("created", ">=", since)), q => { st = Object.assign({}, st, { requests: q.docs.map(d => Object.assign({ id: d.id }, d.data())) }); emit(); }, fail);
+    },
+    setRules(r) { F.setDoc(settingsRef, { rules: r }, { merge: true }).catch(fail); },
+    addSession(o) { const ref = F.doc(col("sessions")); F.setDoc(ref, o).catch(fail); return ref.id; },
+    updateSession(k, p) { F.updateDoc(F.doc(col("sessions"), k), p).catch(fail); },
+    deleteSession(k) { F.deleteDoc(F.doc(col("sessions"), k)).catch(fail); },
+    addRequest(o) { const ref = F.doc(col("requests")); F.setDoc(ref, o).catch(fail); return ref.id; },
+    updateRequest(k, p) { F.updateDoc(F.doc(col("requests"), k), p).catch(fail); }
+  };
+}
+
+// ---------- the rules engine ----------
+function kidStatus(kid, S, t) {
+  const R = S.rules, ws = weekStartOf(t);
+  const all = S.sessions.filter(s => s.kid === kid.id && s.start >= ws && s.how !== "undo").sort((a, b) => a.start - b.start);
+  const endOf = s => s.end != null ? s.end : Math.min(t, s.start + s.plan * MIN);
+  const used = s => Math.max(0, (endOf(s) - s.start) / MIN);
+  const weekUsed = all.reduce((a, s) => a + used(s), 0);
+  const bonus = S.requests.filter(r => r.kid === kid.id && r.status === "ok" && r.created >= ws).reduce((a, r) => a + (r.minutes || 0), 0);
+  const limit = Math.max(0, R.total + bonus);
+  const open = all.find(s => s.end == null && t < s.start + s.plan * MIN) || null;
+  let blockUsed = 0, prevEnd = null;
+  for (const s of all) {
+    if (prevEnd != null && s.start - prevEnd >= R.rest * MIN) blockUsed = 0;
+    blockUsed += used(s); prevEnd = endOf(s);
+  }
+  if (!open && prevEnd != null && t - prevEnd >= R.rest * MIN) blockUsed = 0;
+  const restUntil = (!open && prevEnd != null && blockUsed >= R.session - 0.5) ? prevEnd + R.rest * MIN : null;
+  const weekLeft = Math.max(0, limit - weekUsed);
+  const blockLeft = Math.max(0, R.session - blockUsed);
+  const allowedToday = !!R.days[dayIdx(t)];
+  const finished = all.filter(s => s.end != null && (s.how === "self" || s.how === "auto"));
+  const selfN = finished.filter(s => s.how === "self").length;
+  let state;
+  if (open) state = "running";
+  else if (!allowedToday) state = "off";
+  else if (weekLeft < 1) state = "weekdone";
+  else if (restUntil && t < restUntil) state = "rest";
+  else state = "ready";
+  return { all, open, used, endOf, weekUsed, limit, bonus, weekLeft, blockUsed, blockLeft, restUntil, allowedToday, selfN, doneN: finished.length, state,
+    maxPlan: Math.round(Math.min(blockLeft, weekLeft)) };
+}
+function nextAllowedText(R, t) {
+  for (let i = 1; i <= 7; i++) { const d = (dayIdx(t) + i) % 7; if (R.days[d]) return DAY[d] + "요일"; }
+  return "정해진 날이 없어요";
+}
+function rulesText(R) {
+  const on = DAY.filter((d, i) => R.days[i]);
+  const days = on.length === 7 ? "매일" : on.length === 0 ? "사용하는 날 없음" : on.join("·") + "만";
+  return days + " · 주간 총 " + fmt(R.total) + " · " + fmt(R.session) + " 쓰면 " + fmt(R.rest) + " 쉬기";
+}
+
+// ---------- app state ----------
+let store = null, S = null, loadError = null;
+let role = localStorage.getItem("hsc-role");
+const ui = { screen: "home", kid: null, plan: 60, reason: "", reqMin: 30, pin: "", pinFor: null, pinBad: false, draft: null, confirmDel: null, lastStop: null, msg: null };
+const autoDone = new Set();
+let holding = null, holdTimer = null, pendingRender = false, lastHtml = "";
+
+function setRole(r) { role = r; localStorage.setItem("hsc-role", r); ui.screen = "home"; ui.pin = ""; ui.pinFor = null; render(); }
+
+// ---------- rendering ----------
+function render() {
+  if (holding) { pendingRender = true; return; }
+  pendingRender = false;
+  if (loadError) { app.innerHTML = `<h1>핸사췍</h1><div class="err">연결에 문제가 있어요: ${esc(loadError)}<br>설치 안내서의 Firebase 설정(익명 로그인, 보안 규칙)을 확인해 주세요.</div>`; return; }
+  if (!S) return;
+  const t = now();
+  for (const s of S.sessions) {
+    if (s.end == null && s.how !== "undo" && t >= s.start + s.plan * MIN && !autoDone.has(s.id)) {
+      autoDone.add(s.id); store.updateSession(s.id, { end: s.start + s.plan * MIN, how: "auto" });
+    }
+  }
+  let html;
+  if (!role || ui.screen === "role") html = viewRole();
+  else if (ui.pinFor) html = viewPin();
+  else if (isParent(role)) html = ui.screen === "rules" ? viewRules() : ui.screen === "kid" ? viewParentKid(t) : viewParentHome(t);
+  else html = viewKid(kidById(role), t);
+  if (DEMO) html += viewDemo();
+  if (html === lastHtml) return;
+  lastHtml = html;
+  app.innerHTML = html;
+}
+
+function viewRole() {
+  const first = !role;
+  return `
+  <div class="col"><div class="muted">${first ? "처음 한 번만 정하면 돼요" : "부모 확인 완료"}</div><h1>이 폰은 누구 폰인가요?</h1></div>
+  <div class="card">
+    <div class="t">아이</div>
+    ${KIDS.map(k => `<button class="btn" data-act="pickRole" data-arg="${k.id}" style="display:flex;align-items:center;gap:12px;text-align:left">
+      <span class="avatar" style="background:${k.tint};color:${k.ink};width:34px;height:34px">${esc(k.name[0])}</span><span>${esc(k.name)} <span class="muted">${esc(k.sub)}</span></span></button>`).join("")}
+    <div class="t" style="margin-top:6px">부모</div>
+    ${PARENTS.map(p => `<button class="btn" data-act="pickRole" data-arg="${p.id}">${esc(p.name)} (비밀번호 필요)</button>`).join("")}
+  </div>
+  ${first ? "" : `<button class="btn ghost" data-act="cancelRole">취소</button>`}`;
+}
+
+function viewPin() {
+  return `
+  <div class="row" style="justify-content:flex-start"><button class="back" aria-label="뒤로" data-act="cancelPin">${BACK_SVG}</button><h2>부모 비밀번호</h2></div>
+  <div class="card">
+    <label for="pin" class="muted">${ui.pinFor === "switch" ? "폰 주인을 바꾸려면 부모 비밀번호가 필요해요" : roleName(ui.pinFor) + " 모드로 들어가려면 비밀번호를 입력하세요"}</label>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" value="${esc(ui.pin)}" data-input="pin">
+    ${ui.pinBad ? `<div class="err">비밀번호가 달라요</div>` : ""}
+    <button class="btn primary" data-act="checkPin">확인</button>
+    ${DEMO ? `<div class="muted">체험 모드 비밀번호: ${esc(PARENT_PIN)}</div>` : ""}
+  </div>`;
+}
+
+function ring(remainRatio, color, inner) {
+  const deg = Math.round(Math.max(0, Math.min(1, remainRatio)) * 360);
+  return `<div class="ring" style="background:conic-gradient(${color} 0 ${deg}deg,#E6ECEA ${deg}deg 360deg)"><div>${inner}</div></div>`;
+}
+
+function viewKid(kid, t) {
+  const R = S.rules, st = kidStatus(kid, S, t);
+  const pending = S.requests.find(r => r.kid === kid.id && r.status === "pending");
+  const recent = S.requests.filter(r => r.kid === kid.id && r.status !== "pending" && r.by && r.by !== kid.id && r.reason !== "부모 조정" && t - (r.decided || 0) < 30 * MIN).sort((a, b) => (b.decided || 0) - (a.decided || 0))[0];
+  let body = "";
+  if (st.state === "running") {
+    const s = st.open, end = s.start + s.plan * MIN, remain = (end - t) / MIN, el = (t - s.start) / MIN;
+    const warn = remain <= 10;
+    body = `
+    <div class="card" style="align-items:stretch">
+      ${ring(Math.ceil(remain) / s.plan, warn ? "#E8742C" : kid.ink, `<div class="muted">남은 시간</div><div style="font-size:32px;font-weight:800">${fmt(Math.ceil(remain))}</div><div class="muted">${fmt(el)} 사용 / 계획 ${fmt(s.plan)}</div>`)}
+      <div class="muted" style="text-align:center">${fmtClock(end)}에 끝나요</div>
+      ${warn ? `<div class="banner" style="background:#FDF0E1;color:#8A4310;text-align:center">곧 끝나요! 마무리하고 직접 정지해 봐요</div>` : ""}
+      <button class="hold" data-hold="stop" style="background:var(--ink)"><div class="fill"></div><span>정지 · 1초 꾹 누르기</span></button>
+      ${t - s.start < MIN ? `<button class="btn" data-act="undo">실수로 눌렀어요 · 시작 취소 (기록 안 남음)</button>` : ""}
+    </div>
+    <div class="card muted">정지를 깜빡해도 계획한 시간이 끝나면 자동으로 멈춘 것으로 기록돼요. 단, 스스로 멈춰야 칭찬 기록이 쌓여요!</div>`;
+  } else if (st.state === "off") {
+    body = `<div class="card"><h2>오늘은 쉬는 날이에요</h2><div class="muted">다음 사용일: ${nextAllowedText(R, t)}</div></div>`;
+  } else if (st.state === "weekdone") {
+    body = `<div class="card"><h2>이번 주 시간을 다 썼어요</h2><div class="muted">정말 필요하면 아래에서 엄마·아빠에게 요청할 수 있어요.</div></div>`;
+  } else if (st.state === "rest") {
+    const total = R.rest, left = (st.restUntil - t) / MIN;
+    body = `
+    <div class="card">
+      ${ring(Math.ceil(left) / total, "#E8742C", `<div class="muted">다시 열리기까지</div><div style="font-size:30px;font-weight:800">${fmt(Math.ceil(left))}</div>`)}
+      <div class="muted" style="text-align:center">${fmt(R.session)} 썼으니 ${fmt(R.rest)} 쉬어요 · ${fmtClock(st.restUntil)}부터 다시 쓸 수 있어요</div>
+    </div>`;
+  } else {
+    let opts = [15, 30, 45, 60, 90, 120].filter(m => m <= st.maxPlan);
+    if (st.maxPlan >= 5 && !opts.includes(st.maxPlan) && st.maxPlan < 120) opts.push(st.maxPlan);
+    if (!opts.includes(ui.plan)) ui.plan = opts.includes(60) ? 60 : opts[opts.length - 1];
+    body = opts.length === 0 ? `<div class="card"><h2>남은 시간이 너무 적어요</h2><div class="muted">${fmt(st.maxPlan)} 남았어요</div></div>` : `
+    <div class="card">
+      <div class="col"><h2>이번엔 얼마나 쓸 거야?</h2><div class="muted">지금은 최대 ${fmt(st.maxPlan)}까지 쓸 수 있어요</div></div>
+      <div class="grid3">${opts.map(m => `<button class="opt ${ui.plan === m ? "on" : ""}" aria-pressed="${ui.plan === m}" data-act="plan" data-arg="${m}">${fmt(m)}</button>`).join("")}</div>
+      <button class="hold" data-hold="start" style="background:${kid.ink}"><div class="fill"></div><span>${fmt(ui.plan)} 시작 · 1초 꾹 누르기</span></button>
+      <div class="muted" style="text-align:center">시작을 누른 다음에 폰을 써요. 계획한 시간이 지나면 자동으로 멈춘 것으로 기록돼요.</div>
+    </div>`;
+  }
+  let after = "";
+  const ls = ui.lastStop;
+  if (ls && t - ls.at < MIN) {
+    const s = S.sessions.find(x => x.id === ls.id);
+    if (s && s.how === "self" && t < s.start + s.plan * MIN && st.state !== "running")
+      after = `<div class="banner" style="background:${kid.ink};color:#fff">스스로 멈췄어요. 멋져요!</div><button class="btn" data-act="resume">실수로 멈췄어요 · 이어서 쓰기 (1분 안에만)</button>`;
+  }
+  let req = "";
+  if (st.state !== "running") {
+    if (pending) req = `<div class="card"><div class="t">추가 시간 요청 보냄</div><div class="muted">+${fmt(pending.minutes)} · 엄마나 아빠가 확인하면 알려줘요</div><button class="btn small" data-act="cancelReq" data-arg="${pending.id}">요청 취소</button></div>`;
+    else req = `
+    <div class="card">
+      <div class="col"><div class="t">이번 주 시간이 더 필요해요</div><div class="muted">승인되면 이번 주 한도가 늘어나요. 쉬는 시간 규칙은 그대로예요.</div></div>
+      <div class="grid3">${[15, 30, 60].map(m => `<button class="opt ${ui.reqMin === m ? "on" : ""}" aria-pressed="${ui.reqMin === m}" data-act="reqMin" data-arg="${m}">+${m}분</button>`).join("")}</div>
+      <label for="reason" class="muted">이유 (선택)</label>
+      <textarea id="reason" rows="2" placeholder="예: 수행평가 자료 찾아야 해요" data-input="reason">${esc(ui.reason)}</textarea>
+      <button class="btn dark" data-act="sendReq">엄마·아빠에게 요청하기</button>
+    </div>`;
+  }
+  const recentHtml = recent ? `<div class="banner" style="background:${recent.status === "ok" ? "#E1F3EE;color:#0F6B5A" : "#ECEEF1;color:#4B5160"}">${esc(roleName(recent.by))}가 +${fmt(recent.minutes)} 요청을 ${recent.status === "ok" ? "승인했어요" : "거절했어요"}</div>` : "";
+  return `
+  <div class="row">
+    <div class="col"><div class="muted">${esc(kid.name)}의 폰 · ${DAY[dayIdx(t)]}요일</div><h1>${{ running: "사용 중", off: "쉬는 날", weekdone: "이번 주 끝", rest: "쉬는 시간", ready: "지금 쓸 수 있어요" }[st.state]}</h1></div>
+    <div class="col" style="align-items:flex-end"><div class="muted">이번 주 남은 시간</div><div style="font-size:16px;font-weight:800">${fmt(st.weekLeft)}</div></div>
+  </div>
+  ${recentHtml}${after}${body}
+  <div class="card">
+    <div class="row"><div class="t">이번 주 스스로 정지</div><div style="font-weight:800">${st.selfN} / ${st.doneN}번</div></div>
+    <div class="bar"><div style="width:${Math.round(st.weekUsed / Math.max(1, st.limit) * 100)}%;background:${kid.ink}"></div></div>
+    <div class="muted">${fmt(st.weekUsed)} 사용 / 이번 주 ${fmt(st.limit)}${st.bonus ? " (추가 " + fmt(st.bonus) + " 포함)" : ""}</div>
+  </div>
+  ${req}
+  <div class="muted" style="padding:0 6px">우리 집 규칙: ${rulesText(R)}</div>
+  <button class="btn ghost" data-act="switchRole">폰 주인 바꾸기 (부모 비밀번호)</button>`;
+}
+
+function kidLine(st) {
+  if (st.state === "running") { const s = st.open; return `${Math.floor((now() - s.start) / MIN)}분째 사용 중 · 계획 ${fmt(s.plan)} (${fmtClock(s.start)} 시작)`; }
+  if (st.state === "rest") return `휴식 중 · ${fmtClock(st.restUntil)}부터 사용 가능`;
+  if (st.state === "off") return "오늘은 쉬는 날";
+  if (st.state === "weekdone") return "이번 주 시간 다 씀";
+  return `사용 가능 · 지금 최대 ${fmt(st.maxPlan)}`;
+}
+
+function viewParentHome(t) {
+  const R = S.rules;
+  const pend = S.requests.filter(r => r.status === "pending").sort((a, b) => a.created - b.created);
+  return `
+  <div class="row">
+    <div class="col"><div class="muted">${roleName(role)} 모드 · ${DAY[dayIdx(t)]}요일 ${fmtClock(t)}</div><h1>핸사췍</h1></div>
+  </div>
+  <div class="card" style="background:var(--ink);color:#fff">
+    <div class="row"><div class="t">우리 집 규칙</div><button class="btn small" style="background:transparent;color:#fff;border-color:#4A4F5A" data-act="openRules">규칙 바꾸기</button></div>
+    <div style="font-size:14px;color:#D9DCE2">${rulesText(R)}</div>
+  </div>
+  ${pend.map(r => `
+  <div class="card" style="border:2px solid #E8742C">
+    <div class="col"><div style="font-size:12px;font-weight:700;color:#A34C12">추가 시간 요청 · ${fmtDay(r.created)}</div>
+    <div style="font-size:16px;font-weight:700">${esc(roleName(r.kid))}가 이번 주 ${fmt(r.minutes)} 더 원해요</div>
+    ${r.reason ? `<div class="muted">“${esc(r.reason)}”</div>` : ""}</div>
+    <div class="row"><button class="btn" style="flex:1" data-act="deny" data-arg="${r.id}">거절</button><button class="btn primary" style="flex:2" data-act="approve" data-arg="${r.id}">${fmt(r.minutes)} 승인</button></div>
+  </div>`).join("")}
+  <div class="t" style="padding:6px 6px 0">아이들</div>
+  ${KIDS.map(k => {
+    const st = kidStatus(k, S, t), p = STATE_PILL[st.state];
+    return `<button class="kidcard" data-act="openKid" data-arg="${k.id}" aria-label="${esc(k.name)} 자세히 보기">
+      <div class="row" style="width:100%"><div class="row" style="justify-content:flex-start"><span class="avatar" style="background:${k.tint};color:${k.ink}">${esc(k.name[0])}</span>
+      <div class="col"><div style="font-size:16px;font-weight:700">${esc(k.name)}</div><div class="muted" style="font-size:12px">${esc(k.sub)}</div></div></div>${pill(p[0], p[1], p[2])}</div>
+      <div style="width:100%;display:flex;flex-direction:column;gap:6px">
+        <div class="row" style="font-size:13px"><span style="font-weight:700">이번 주 ${fmt(st.weekUsed)} 사용</span><span class="muted">${fmt(st.weekLeft)} 남음</span></div>
+        <div class="bar"><div style="width:${Math.min(100, Math.round(st.weekUsed / Math.max(1, st.limit) * 100))}%;background:${k.ink}"></div></div>
+        <div class="row" style="font-size:12px"><span class="muted">${kidLine(st)}</span><span style="font-weight:700;white-space:nowrap">스스로 정지 ${st.selfN}/${st.doneN}</span></div>
+      </div></button>`;
+  }).join("")}
+  <button class="btn ghost" data-act="switchRole">폰 주인 바꾸기</button>`;
+}
+
+function viewParentKid(t) {
+  const k = kidById(ui.kid), st = kidStatus(k, S, t), p = STATE_PILL[st.state];
+  const ws = weekStartOf(t);
+  const reqs = S.requests.filter(r => r.kid === k.id && r.status === "ok" && r.created >= ws);
+  return `
+  <div class="row" style="justify-content:flex-start"><button class="back" aria-label="뒤로" data-act="home">${BACK_SVG}</button><h2>${esc(k.name)}</h2><span class="muted">${esc(k.sub)}</span></div>
+  <div class="card">
+    <div class="row"><div class="col"><div class="muted">이번 주 남은 시간</div><div style="font-size:30px;font-weight:800">${fmt(st.weekLeft)}</div></div>${pill(p[0], p[1], p[2])}</div>
+    <div class="bar"><div style="width:${Math.min(100, Math.round(st.weekUsed / Math.max(1, st.limit) * 100))}%;background:${k.ink}"></div></div>
+    <div class="muted">${fmt(st.weekUsed)} 사용 / 이번 주 한도 ${fmt(st.limit)}</div>
+    <div class="banner" style="background:${p[1]};color:${p[2]}">${kidLine(st)}</div>
+    ${st.open ? `<button class="btn dark" data-act="parentStop" data-arg="${st.open.id}">지금 사용 끝내기 (부모가 정지)</button>` : ""}
+  </div>
+  <div class="card">
+    <div class="t">${esc(k.name)}만 이번 주 한도 조정</div>
+    <div class="stepper"><button class="round" aria-label="30분 줄이기" data-act="bonus" data-arg="-30">−</button>
+      <div class="col" style="align-items:center"><div style="font-size:22px;font-weight:800">${fmt(st.limit)}</div><div class="muted">규칙 ${fmt(S.rules.total)}${st.bonus ? (st.bonus > 0 ? " + " : " − ") + fmt(Math.abs(st.bonus)) : ""}</div></div>
+      <button class="round" aria-label="30분 늘리기" data-act="bonus" data-arg="30">+</button></div>
+    ${reqs.length ? `<div class="muted">${reqs.map(r => `${fmtDay(r.decided || r.created)} ${r.minutes > 0 ? "+" : "−"}${fmt(Math.abs(r.minutes))} (${esc(roleName(r.by))})`).join("<br>")}</div>` : ""}
+  </div>
+  <div class="card" style="gap:4px">
+    <div class="row" style="padding-bottom:6px"><div class="t">이번 주 시작·정지 기록</div><div class="muted">스스로 정지 <b style="color:var(--ink)">${st.selfN}/${st.doneN}</b></div></div>
+    ${st.all.length === 0 ? `<div class="muted" style="padding:8px 0">아직 기록이 없어요</div>` : st.all.slice().reverse().map(s => {
+      const tag = TAG[s.end == null ? "running" : s.how] || TAG.self;
+      const conf = ui.confirmDel === s.id;
+      return `<div class="log"><div class="col" style="flex:1"><div style="font-size:14px;font-weight:600">${fmtDay(s.start)} · ${fmt(st.used(s))} 사용</div><div class="muted" style="font-size:12px">계획 ${fmt(s.plan)}</div></div>
+        ${pill(tag[0], tag[1], tag[2])}
+        ${conf ? `<button class="btn small danger" data-act="delSession" data-arg="${s.id}">삭제</button>` : `<button class="btn small" data-act="askDel" data-arg="${s.id}" aria-label="기록 정정">정정</button>`}</div>`;
+    }).join("")}
+    <div class="muted" style="padding-top:8px">잘못된 기록(예: 시작만 누르고 폰을 안 쓴 경우)은 '정정'으로 지울 수 있어요.</div>
+  </div>`;
+}
+
+function viewRules() {
+  const D = ui.draft;
+  const step = (key, title, help, s) => `
+    <div class="card"><div class="col"><div class="t">${title}</div><div class="muted">${help}</div></div>
+    <div class="stepper"><button class="round" aria-label="${title} ${s}분 줄이기" data-act="step" data-arg="${key}:-${s}">−</button>
+    <div style="font-size:22px;font-weight:800">${fmt(D[key])}</div>
+    <button class="round" aria-label="${title} ${s}분 늘리기" data-act="step" data-arg="${key}:${s}">+</button></div></div>`;
+  return `
+  <div class="row" style="justify-content:flex-start"><button class="back" aria-label="뒤로" data-act="home">${BACK_SVG}</button><h2>우리 집 규칙</h2></div>
+  <div class="muted" style="padding:0 6px">삼남매 모두에게 똑같이 적용돼요.</div>
+  <div class="card"><div class="t">핸드폰 쓰는 날</div>
+    <div class="grid7">${DAY.map((d, i) => `<button class="opt ${D.days[i] ? "on" : ""}" aria-pressed="${D.days[i]}" data-act="toggleDay" data-arg="${i}">${d}</button>`).join("")}</div></div>
+  ${step("total", "주간 총 사용 한도", "쓰는 날 전체를 합친 시간 (월요일 0시에 새로 시작)", 30)}
+  ${step("session", "한 번에 연속으로 쓸 수 있는 시간", "이만큼 쓰면 쉬는 시간이 시작돼요", 15)}
+  ${step("rest", "그다음 쉬는 시간", "이만큼 쉬어야 다시 쓸 수 있어요", 15)}
+  <button class="btn primary" style="min-height:52px" data-act="saveRules">저장하기</button>`;
+}
+
+function viewDemo() {
+  return `<div class="demo"><b>체험 모드</b><span>이 폰에만 저장돼요 · 시계 ${clockOffset ? "+" + fmt(clockOffset / MIN) : "정상"}</span>
+    <button class="btn small" data-act="clock" data-arg="10">+10분</button><button class="btn small" data-act="clock" data-arg="60">+1시간</button>
+    <button class="btn small" data-act="clock" data-arg="1440">+1일</button><button class="btn small" data-act="demoReset">처음부터</button></div>`;
+}
+
+// ---------- actions ----------
+const actions = {
+  pickRole(a) { if (isParent(a)) { ui.pinFor = a; ui.pin = ""; ui.pinBad = false; ui.screen = "home"; render(); } else setRole(a); },
+  cancelRole() { ui.screen = "home"; render(); },
+  switchRole() { if (isParent(role)) { ui.screen = "role"; render(); } else { ui.pinFor = "switch"; ui.pin = ""; ui.pinBad = false; render(); } },
+  cancelPin() { ui.pinFor = null; render(); },
+  checkPin() {
+    if (ui.pin !== PARENT_PIN) { ui.pinBad = true; render(); return; }
+    const f = ui.pinFor; ui.pinFor = null; ui.pin = "";
+    if (f === "switch") { ui.screen = "role"; render(); } else setRole(f);
+  },
+  plan(a) { ui.plan = Number(a); render(); },
+  reqMin(a) { ui.reqMin = Number(a); render(); },
+  undo() { const st = kidStatus(kidById(role), S, now()); if (st.open) store.updateSession(st.open.id, { end: st.open.start, how: "undo" }); },
+  resume() { const ls = ui.lastStop; if (ls) { store.updateSession(ls.id, { end: null, how: null }); ui.lastStop = null; } },
+  sendReq() { store.addRequest({ kid: role, minutes: ui.reqMin, reason: ui.reason.trim().slice(0, 200), status: "pending", created: now(), by: null, decided: null }); ui.reason = ""; },
+  cancelReq(id) { store.updateRequest(id, { status: "cancel", by: role, decided: now() }); },
+  approve(id) { store.updateRequest(id, { status: "ok", by: role, decided: now() }); },
+  deny(id) { store.updateRequest(id, { status: "no", by: role, decided: now() }); },
+  openKid(id) { ui.kid = id; ui.screen = "kid"; ui.confirmDel = null; render(); window.scrollTo(0, 0); },
+  home() { ui.screen = "home"; ui.draft = null; render(); window.scrollTo(0, 0); },
+  openRules() { ui.draft = JSON.parse(JSON.stringify(S.rules)); ui.screen = "rules"; render(); window.scrollTo(0, 0); },
+  toggleDay(i) { ui.draft.days[Number(i)] = !ui.draft.days[Number(i)]; render(); },
+  step(a) {
+    const [k, d] = a.split(":"); const lim = { total: [30, 2400], session: [15, 600], rest: [15, 600] }[k];
+    ui.draft[k] = Math.max(lim[0], Math.min(lim[1], ui.draft[k] + Number(d))); render();
+  },
+  saveRules() { store.setRules(ui.draft); ui.draft = null; ui.screen = "home"; render(); },
+  bonus(d) { const t = now(); store.addRequest({ kid: ui.kid, minutes: Number(d), reason: "부모 조정", status: "ok", created: t, by: role, decided: t }); },
+  parentStop(id) { store.updateSession(id, { end: now(), how: "parent" }); },
+  askDel(id) { ui.confirmDel = id; render(); },
+  delSession(id) { store.deleteSession(id); ui.confirmDel = null; },
+  clock(m) { clockOffset += Number(m) * MIN; localStorage.setItem("hsc-offset", String(clockOffset)); render(); },
+  demoReset() { clockOffset = 0; localStorage.setItem("hsc-offset", "0"); store.reset(); }
+};
+function doHold(kind) {
+  const kid = kidById(role); if (!kid) return;
+  const t = now(), st = kidStatus(kid, S, t);
+  if (kind === "start" && (st.state === "ready") && ui.plan > 0 && ui.plan <= st.maxPlan) {
+    store.addSession({ kid: kid.id, start: t, plan: ui.plan, end: null, how: null });
+    ui.lastStop = null;
+  } else if (kind === "stop" && st.open) {
+    store.updateSession(st.open.id, { end: t, how: "self" });
+    ui.lastStop = { id: st.open.id, at: t };
+  }
+  render();
+}
+
+app.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
+  const f = actions[b.dataset.act]; if (f) f(b.dataset.arg);
+});
+app.addEventListener("input", e => {
+  const k = e.target.dataset && e.target.dataset.input; if (k) ui[k] = e.target.value;
+});
+app.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "pin") actions.checkPin(); });
+// hold-to-press (1 second)
+app.addEventListener("pointerdown", e => {
+  const b = e.target.closest("[data-hold]"); if (!b) return;
+  e.preventDefault();
+  clearTimeout(holdTimer); holding = b.dataset.hold; b.classList.add("holding");
+  holdTimer = setTimeout(() => { const h = holding; holding = null; b.classList.remove("holding"); doHold(h); }, 1000);
+});
+function cancelHold() {
+  if (!holding) return;
+  clearTimeout(holdTimer); holding = null;
+  app.querySelectorAll(".holding").forEach(x => x.classList.remove("holding"));
+  if (pendingRender) render();
+}
+["pointerup", "pointercancel"].forEach(ev => document.addEventListener(ev, cancelHold));
+app.addEventListener("pointerout", e => { const b = e.target.closest("[data-hold]"); if (b && !b.contains(e.relatedTarget)) cancelHold(); });
+app.addEventListener("contextmenu", e => { if (e.target.closest("[data-hold]")) e.preventDefault(); });
+
+setInterval(() => {
+  const a = document.activeElement;
+  if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA")) return;
+  render();
+}, 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+
+// ---------- start ----------
+(async () => {
+  try {
+    store = DEMO ? localStore() : await firebaseStore(e => { loadError = (e && (e.code || e.message)) || String(e); render(); });
+    store.start(s => { S = s; render(); });
+  } catch (e) {
+    loadError = (e && (e.code || e.message)) || String(e); render();
+  }
+})();
+</script>
+</body>
+</html>
