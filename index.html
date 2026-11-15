@@ -32,13 +32,14 @@ button:disabled{opacity:.4;cursor:default}
 .btn.small{min-height:40px;font-size:13px;padding:0 12px;border-radius:12px}
 .btn.ghost{border:none;background:transparent;color:var(--mute);font-weight:600;font-size:13px;min-height:44px}
 .hold{position:relative;overflow:hidden;min-height:64px;border-radius:18px;border:none;color:#fff;font-size:17px;font-weight:800;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;width:100%}
-.hold .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(0,0,0,.3);transition:width .15s ease-out}
+.hold .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(0,0,0,.38);transition:width .15s ease-out}
 .hold.holding .fill{width:100%;transition:width 1s linear}
 .hold span{position:relative;pointer-events:none}
 .pill{padding:5px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
 .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
 .bar>div{height:100%;border-radius:4px}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
 .opt{min-height:48px;border-radius:12px;border:1px solid #D5D8DE;background:#fff;font-size:15px;font-weight:700;color:var(--ink);padding:0 4px}
 .opt.on{border:2px solid var(--blue);background:#E3EDFD;color:var(--blueD)}
@@ -72,6 +73,9 @@ const KIDS = CFG.KIDS || [
 ];
 const PARENTS = CFG.PARENTS || [ { id: "dad", name: "아빠" }, { id: "mom", name: "엄마" } ];
 const DEFAULT_RULES = CFG.DEFAULT_RULES || { days: [false, false, false, false, true, true, true], total: 480, session: 120, rest: 120 };
+const PLAN_STEPS = [30, 60, 90, 120];
+const AGO_STEPS = [0, 10, 20, 30];
+const planLabel = m => m === 90 ? "1시간 반" : fmt(m);
 const TIMER_SHORTCUT = "핸사췍 타이머";
 const TIMER_STOP_SHORTCUT = "핸사췍 타이머 끄기";
 
@@ -216,7 +220,7 @@ let store = null, S = null, loadError = null;
 let role = localStorage.getItem("hsc-role");
 let deviceId = localStorage.getItem("hsc-device");
 if (!deviceId) { const a = new Uint8Array(8); crypto.getRandomValues(a); deviceId = Array.from(a, b => b.toString(16).padStart(2, "0")).join(""); localStorage.setItem("hsc-device", deviceId); }
-const ui = { screen: "home", kid: null, plan: 60, reason: "", reqMin: 30, code: "", codeBad: "", codeBusy: false, newCode: null, draft: null, confirmDel: null, confirmDev: null, lastStop: null, alarm: null,
+const ui = { screen: "home", kid: null, plan: 60, pPlan: 60, pAgo: 0, pStopAgo: 0, reason: "", reqMin: 30, code: "", codeBad: "", codeBusy: false, newCode: null, draft: null, confirmDel: null, confirmDev: null, lastStop: null, alarm: null,
   phoneTimer: localStorage.getItem("hsc-phone-timer") === "1" };
 const alarmed = new Set();
 const autoDone = new Set();
@@ -366,9 +370,9 @@ function viewKid(kid, t) {
     body = `
     <div class="card" style="align-items:stretch">
       ${ring(Math.ceil(remain) / s.plan, warn ? "#E8742C" : kid.ink, `<div class="muted">남은 시간</div><div style="font-size:32px;font-weight:800">${fmt(Math.ceil(remain))}</div><div class="muted">${fmt(el)} 사용 / 계획 ${fmt(s.plan)}</div>`)}
-      <div class="muted" style="text-align:center">${fmtClock(end)}에 끝나요</div>
+      <div class="muted" style="text-align:center">${s.by ? esc(roleName(s.by)) + "가 대신 시작했어요 · " : ""}${fmtClock(end)}에 끝나요</div>
       ${warn ? `<div class="banner" style="background:#FDF0E1;color:#8A4310;text-align:center">곧 끝나요! 마무리하고 직접 정지해 봐요</div>` : ""}
-      <button class="hold" data-hold="stop" style="background:var(--ink)"><div class="fill"></div><span>정지 · 1초 꾹 누르기</span></button>
+      <button class="hold" data-hold="stop" style="background:#C2410C"><div class="fill"></div><span>정지 · 1초 꾹 누르기</span></button>
       ${t - s.start < MIN ? `<button class="btn" data-act="undo">실수로 눌렀어요 · 시작 취소 (기록 안 남음)</button>` : ""}
       ${ui.phoneTimer && !alarmed.has(s.id + ":timer") ? `<a class="btn primary" style="display:flex;align-items:center;justify-content:center;text-decoration:none" data-act="timerSet" data-arg="${s.id}" href="${shortcutUrl(TIMER_SHORTCUT, Math.ceil(remain))}">아이폰 타이머 맞추기 (${fmt(Math.ceil(remain))})</a>` : ""}
     </div>
@@ -385,14 +389,14 @@ function viewKid(kid, t) {
       <div class="muted" style="text-align:center">${fmt(R.session)} 썼으니 ${fmt(R.rest)} 쉬어요 · ${fmtClock(st.restUntil)}부터 다시 쓸 수 있어요</div>
     </div>`;
   } else {
-    let opts = [];
-    for (let m = 30; m <= Math.min(st.maxPlan, R.session); m += 30) opts.push(m);
-    if (opts.length === 0 && st.maxPlan >= 5) opts.push(st.maxPlan);
-    if (!opts.includes(ui.plan)) ui.plan = opts.includes(60) ? 60 : opts[opts.length - 1];
-    body = opts.length === 0 ? `<div class="card"><h2>남은 시간이 너무 적어요</h2><div class="muted">${fmt(st.maxPlan)} 남았어요</div></div>` : `
+    let opts = PLAN_STEPS.slice();
+    if (st.maxPlan < 30 && st.maxPlan >= 5) opts = [st.maxPlan];
+    const okPlan = m => m <= st.maxPlan;
+    if (!okPlan(ui.plan)) { const ok = opts.filter(okPlan); ui.plan = ok.includes(60) ? 60 : ok[ok.length - 1]; }
+    body = !opts.some(okPlan) ? `<div class="card"><h2>남은 시간이 너무 적어요</h2><div class="muted">${fmt(st.maxPlan)} 남았어요</div></div>` : `
     <div class="card">
       <div class="col"><h2>이번엔 얼마나 쓸 거야?</h2><div class="muted">지금은 최대 ${fmt(st.maxPlan)}까지 쓸 수 있어요</div></div>
-      <div class="grid3">${opts.map(m => `<button class="opt ${ui.plan === m ? "on" : ""}" aria-pressed="${ui.plan === m}" data-act="plan" data-arg="${m}">${fmt(m)}</button>`).join("")}</div>
+      <div class="grid4">${opts.map(m => `<button class="opt ${ui.plan === m ? "on" : ""}" aria-pressed="${ui.plan === m}" data-act="plan" data-arg="${m}" ${okPlan(m) ? "" : "disabled"}>${planLabel(m)}</button>`).join("")}</div>
       <button class="hold" data-hold="start" style="background:${kid.ink}"><div class="fill"></div><span>${fmt(ui.plan)} 시작 · 1초 꾹 누르기</span></button>
       <div class="muted" style="text-align:center">시작을 누른 다음에 폰을 써요. 계획한 시간이 지나면 자동으로 멈춘 것으로 기록돼요.</div>
     </div>`;
@@ -428,10 +432,29 @@ function viewKid(kid, t) {
     <div class="bar"><div style="width:${Math.round(st.weekUsed / Math.max(1, st.limit) * 100)}%;background:${kid.ink}"></div></div>
     <div class="muted">${fmt(st.weekUsed)} 사용 / 이번 주 ${fmt(st.limit)}${st.bonus ? " (추가 " + fmt(st.bonus) + " 포함)" : ""}</div>
   </div>
+  ${viewFamily(t, kid.id)}
   ${req}
   <div class="muted" style="padding:0 6px">우리 집 규칙: ${rulesText(R)}</div>
   <div class="card"><label class="row" style="cursor:pointer"><span class="col"><span class="t">아이폰 타이머 함께 쓰기</span><span class="muted">앱을 닫아도 알람이 울려요 (단축어 2개 필요)</span></span>
     <input type="checkbox" data-act="togglePhoneTimer" ${ui.phoneTimer ? "checked" : ""} style="width:28px;height:28px;flex-shrink:0"></label></div>`;
+}
+
+function viewFamily(t, meId) {
+  return `
+  <div class="card" style="gap:4px">
+    <div class="row" style="padding-bottom:6px"><div class="t">우리 가족 이번 주</div><div class="muted">모두 함께 봐요</div></div>
+    ${KIDS.map(k => {
+      const st = kidStatus(k, S, t), p = STATE_PILL[st.state];
+      return `<div class="log" style="align-items:flex-start">
+        <span class="avatar" style="background:${k.tint};color:${k.ink};width:34px;height:34px;font-size:14px">${esc(k.name[0])}</span>
+        <div class="col" style="flex:1;gap:5px">
+          <div class="row"><span style="font-size:14px;font-weight:700">${esc(k.name)}${k.id === meId ? ' <span class="muted">(나)</span>' : ""}</span>${pill(p[0], p[1], p[2])}</div>
+          <div class="bar" style="height:6px"><div style="width:${Math.min(100, Math.round(st.weekUsed / Math.max(1, st.limit) * 100))}%;background:${k.ink}"></div></div>
+          <div class="row" style="font-size:12px"><span class="muted">${fmt(st.weekUsed)} 사용</span><span style="font-weight:700">${fmt(st.weekLeft)} 남음</span></div>
+          ${st.state === "running" ? `<div class="muted" style="font-size:12px">${kidLine(st)}</div>` : ""}
+        </div></div>`;
+    }).join("")}
+  </div>`;
 }
 
 function kidLine(st) {
@@ -486,8 +509,8 @@ function viewParentKid(t) {
     <div class="bar"><div style="width:${Math.min(100, Math.round(st.weekUsed / Math.max(1, st.limit) * 100))}%;background:${k.ink}"></div></div>
     <div class="muted">${fmt(st.weekUsed)} 사용 / 이번 주 한도 ${fmt(st.limit)}</div>
     <div class="banner" style="background:${p[1]};color:${p[2]}">${kidLine(st)}</div>
-    ${st.open ? `<button class="btn dark" data-act="parentStop" data-arg="${st.open.id}">지금 사용 끝내기 (부모가 정지)</button>` : ""}
   </div>
+  ${st.open ? parentStopCard(st, t) : parentStartCard(k, st, t)}
   <div class="card">
     <div class="t">${esc(k.name)}만 이번 주 한도 조정</div>
     <div class="stepper"><button class="round" aria-label="30분 줄이기" data-act="bonus" data-arg="-30">−</button>
@@ -500,11 +523,41 @@ function viewParentKid(t) {
     ${st.all.length === 0 ? `<div class="muted" style="padding:8px 0">아직 기록이 없어요</div>` : st.all.slice().reverse().map(s => {
       const tag = TAG[s.end == null ? "running" : s.how] || TAG.self;
       const conf = ui.confirmDel === s.id;
-      return `<div class="log"><div class="col" style="flex:1"><div style="font-size:14px;font-weight:600">${fmtDay(s.start)} · ${fmt(st.used(s))} 사용</div><div class="muted" style="font-size:12px">계획 ${fmt(s.plan)}</div></div>
+      return `<div class="log"><div class="col" style="flex:1"><div style="font-size:14px;font-weight:600">${fmtDay(s.start)} · ${fmt(st.used(s))} 사용</div><div class="muted" style="font-size:12px">계획 ${fmt(s.plan)}${s.by ? " · " + esc(roleName(s.by)) + "가 시작" : ""}${s.how === "parent" && s.stoppedBy ? " · " + esc(roleName(s.stoppedBy)) + "가 정지" : ""}</div></div>
         ${pill(tag[0], tag[1], tag[2])}
         ${conf ? `<button class="btn small danger" data-act="delSession" data-arg="${s.id}">삭제</button>` : `<button class="btn small" data-act="askDel" data-arg="${s.id}" aria-label="기록 정정">정정</button>`}</div>`;
     }).join("")}
     <div class="muted" style="padding-top:8px">잘못된 기록(예: 시작만 누르고 폰을 안 쓴 경우)은 '정정'으로 지울 수 있어요.</div>
+  </div>`;
+}
+
+function agoButtons(cur, act, okFn) {
+  return `<div class="grid4">${AGO_STEPS.map(a => `<button class="opt ${cur === a ? "on" : ""}" aria-pressed="${cur === a}" data-act="${act}" data-arg="${a}" ${okFn(a) ? "" : "disabled"}>${a === 0 ? "지금" : a + "분 전"}</button>`).join("")}</div>`;
+}
+function parentStartCard(k, st, t) {
+  const note = { off: "오늘은 쉬는 날이에요.", rest: "지금은 쉬는 시간이에요.", weekdone: "이번 주 시간을 다 썼어요." }[st.state];
+  const lastEnd = st.all.reduce((m, x) => Math.max(m, st.endOf(x)), 0);
+  const okAgo = a => t - a * MIN >= lastEnd;
+  if (!okAgo(ui.pAgo)) ui.pAgo = 0;
+  return `
+  <div class="card">
+    <div class="col"><div class="t">${esc(k.name)} 대신 시작하기</div><div class="muted">시작을 깜빡했을 때 써요. 실제로 쓰기 시작한 시각을 골라 주세요.</div></div>
+    <div class="muted">계획 시간</div>
+    <div class="grid4">${PLAN_STEPS.map(m => `<button class="opt ${ui.pPlan === m ? "on" : ""}" aria-pressed="${ui.pPlan === m}" data-act="pPlan" data-arg="${m}">${planLabel(m)}</button>`).join("")}</div>
+    <div class="muted">실제로 시작한 시각</div>
+    ${agoButtons(ui.pAgo, "pAgo", okAgo)}
+    ${note ? `<div class="banner" style="background:#FDF0E1;color:#8A4310">${note} 그래도 부모는 시작할 수 있어요.</div>` : ""}
+    <button class="btn primary" data-act="parentStart">${fmtClock(t - ui.pAgo * MIN)}부터 ${fmt(ui.pPlan)} 시작</button>
+  </div>`;
+}
+function parentStopCard(st, t) {
+  const s = st.open, ok = a => t - a * MIN > s.start;
+  if (!ok(ui.pStopAgo)) ui.pStopAgo = 0;
+  return `
+  <div class="card">
+    <div class="col"><div class="t">대신 정지하기</div><div class="muted">정지를 깜빡했을 때 써요. 실제로 폰을 내려놓은 시각을 골라 주세요.</div></div>
+    ${agoButtons(ui.pStopAgo, "pStopAgo", ok)}
+    <button class="btn dark" data-act="parentStop" data-arg="${s.id}">${fmtClock(t - ui.pStopAgo * MIN)}에 정지</button>
   </div>`;
 }
 
@@ -571,7 +624,19 @@ const actions = {
   },
   saveRules() { store.setRules(ui.draft); ui.draft = null; ui.screen = "home"; render(); },
   bonus(d) { const t = now(); store.addRequest({ kid: ui.kid, minutes: Number(d), reason: "부모 조정", status: "ok", created: t, by: role, decided: t }); },
-  parentStop(id) { store.updateSession(id, { end: now(), how: "parent" }); },
+  parentStop(id) {
+    const s = S.sessions.find(x => x.id === id); if (!s) return;
+    const end = Math.max(s.start + MIN, now() - ui.pStopAgo * MIN);
+    store.updateSession(id, { end, how: "parent", stoppedBy: role }); ui.pStopAgo = 0;
+  },
+  parentStart() {
+    const t = now(), st = kidStatus(kidById(ui.kid), S, t);
+    if (st.open) return;
+    store.addSession({ kid: ui.kid, start: t - ui.pAgo * MIN, plan: ui.pPlan, end: null, how: null, by: role }); ui.pAgo = 0;
+  },
+  pPlan(a) { ui.pPlan = Number(a); render(); },
+  pAgo(a) { ui.pAgo = Number(a); render(); },
+  pStopAgo(a) { ui.pStopAgo = Number(a); render(); },
   askDel(id) { ui.confirmDel = id; render(); },
   delSession(id) { store.deleteSession(id); ui.confirmDel = null; },
 };
