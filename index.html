@@ -73,9 +73,8 @@ const KIDS = CFG.KIDS || [
 ];
 const PARENTS = CFG.PARENTS || [ { id: "dad", name: "아빠" }, { id: "mom", name: "엄마" } ];
 const DEFAULT_RULES = CFG.DEFAULT_RULES || { days: [false, false, false, false, true, true, true], total: 480, session: 120, rest: 120 };
-const APP_VERSION = "v4 (11/15)";
+const APP_VERSION = "v5 (11/15)";
 const PLAN_STEPS = [30, 60, 90, 120];
-const AGO_STEPS = [0, 10, 20, 30];
 const planLabel = m => m === 90 ? "1시간 반" : fmt(m);
 const TIMER_SHORTCUT = "핸사췍 타이머";
 const TIMER_STOP_SHORTCUT = "핸사췍 타이머 끄기";
@@ -221,7 +220,7 @@ let store = null, S = null, loadError = null;
 let role = localStorage.getItem("hsc-role");
 let deviceId = localStorage.getItem("hsc-device");
 if (!deviceId) { const a = new Uint8Array(8); crypto.getRandomValues(a); deviceId = Array.from(a, b => b.toString(16).padStart(2, "0")).join(""); localStorage.setItem("hsc-device", deviceId); }
-const ui = { screen: "home", kid: null, plan: 60, pPlan: 60, pAgo: 0, pStopAgo: 0, reason: "", reqMin: 30, code: "", codeBad: "", codeBusy: false, newCode: null, draft: null, confirmDel: null, confirmDev: null, lastStop: null, alarm: null,
+const ui = { screen: "home", kid: null, plan: 60, pPlan: 60, pStart: "", pStop: "", pErr: "", reason: "", reqMin: 30, code: "", codeBad: "", codeBusy: false, newCode: null, draft: null, confirmDel: null, confirmDev: null, lastStop: null, alarm: null,
   phoneTimer: localStorage.getItem("hsc-phone-timer") === "1" };
 const alarmed = new Set();
 const autoDone = new Set();
@@ -533,33 +532,46 @@ function viewParentKid(t) {
   </div>`;
 }
 
-function agoButtons(cur, act, okFn) {
-  return `<div class="grid4">${AGO_STEPS.map(a => `<button class="opt ${cur === a ? "on" : ""}" aria-pressed="${cur === a}" data-act="${act}" data-arg="${a}" ${okFn(a) ? "" : "disabled"}>${a === 0 ? "지금" : a + "분 전"}</button>`).join("")}</div>`;
+function hhmm(ts) { const d = new Date(ts); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+// "HH:MM" from the wheel picker -> timestamp (today; a time later than now means yesterday)
+function pickTs(v, t) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(v || ""); if (!m) return t;
+  const d = new Date(t); d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  let ts = d.getTime(); if (ts > t + MIN) ts -= 24 * 60 * MIN;
+  return ts;
+}
+function timePicker(key, t, label) {
+  const v = ui[key] || hhmm(t), ts = pickTs(v, t), ago = Math.round((t - ts) / MIN);
+  return `
+    <label for="${key}" class="muted">${label}</label>
+    <div class="row">
+      <input id="${key}" type="time" value="${v}" data-input="${key}" style="flex:1;font-size:22px;font-weight:700;text-align:center;min-height:52px">
+      <button class="btn small" data-act="timeNow" data-arg="${key}">지금</button>
+    </div>
+    <div class="muted" style="text-align:center">${ago <= 0 ? "지금" : fmt(ago) + " 전"} · ${fmtClock(ts)}</div>`;
 }
 function parentStartCard(k, st, t) {
   const note = { off: "오늘은 쉬는 날이에요.", rest: "지금은 쉬는 시간이에요.", weekdone: "이번 주 시간을 다 썼어요." }[st.state];
-  const lastEnd = st.all.reduce((m, x) => Math.max(m, st.endOf(x)), 0);
-  const okAgo = a => t - a * MIN >= lastEnd;
-  if (!okAgo(ui.pAgo)) ui.pAgo = 0;
+  const ts = pickTs(ui.pStart, t);
   return `
   <div class="card">
     <div class="col"><div class="t">${esc(k.name)} 대신 시작하기</div><div class="muted">시작을 깜빡했을 때 써요. 실제로 쓰기 시작한 시각을 골라 주세요.</div></div>
     <div class="muted">계획 시간</div>
     <div class="grid4">${PLAN_STEPS.map(m => `<button class="opt ${ui.pPlan === m ? "on" : ""}" aria-pressed="${ui.pPlan === m}" data-act="pPlan" data-arg="${m}">${planLabel(m)}</button>`).join("")}</div>
-    <div class="muted">실제로 시작한 시각</div>
-    ${agoButtons(ui.pAgo, "pAgo", okAgo)}
+    ${timePicker("pStart", t, "실제로 시작한 시각 (눌러서 돌려 고르기)")}
     ${note ? `<div class="banner" style="background:#FDF0E1;color:#8A4310">${note} 그래도 부모는 시작할 수 있어요.</div>` : ""}
-    <button class="btn primary" data-act="parentStart">${fmtClock(t - ui.pAgo * MIN)}부터 ${fmt(ui.pPlan)} 시작</button>
+    ${ui.pErr ? `<div class="err">${esc(ui.pErr)}</div>` : ""}
+    <button class="btn primary" data-act="parentStart">${fmtClock(ts)}부터 ${fmt(ui.pPlan)} 시작</button>
   </div>`;
 }
 function parentStopCard(st, t) {
-  const s = st.open, ok = a => t - a * MIN > s.start;
-  if (!ok(ui.pStopAgo)) ui.pStopAgo = 0;
+  const s = st.open, ts = pickTs(ui.pStop, t);
   return `
   <div class="card">
-    <div class="col"><div class="t">대신 정지하기</div><div class="muted">정지를 깜빡했을 때 써요. 실제로 폰을 내려놓은 시각을 골라 주세요.</div></div>
-    ${agoButtons(ui.pStopAgo, "pStopAgo", ok)}
-    <button class="btn dark" data-act="parentStop" data-arg="${s.id}">${fmtClock(t - ui.pStopAgo * MIN)}에 정지</button>
+    <div class="col"><div class="t">대신 정지하기</div><div class="muted">정지를 깜빡했을 때 써요. 실제로 폰을 내려놓은 시각을 골라 주세요. (${fmtClock(s.start)} 시작)</div></div>
+    ${timePicker("pStop", t, "실제로 끝난 시각 (눌러서 돌려 고르기)")}
+    ${ui.pErr ? `<div class="err">${esc(ui.pErr)}</div>` : ""}
+    <button class="btn dark" data-act="parentStop" data-arg="${s.id}">${fmtClock(ts)}에 정지</button>
   </div>`;
 }
 
@@ -616,7 +628,7 @@ const actions = {
   cancelReq(id) { store.updateRequest(id, { status: "cancel", by: role, decided: now() }); },
   approve(id) { store.updateRequest(id, { status: "ok", by: role, decided: now() }); },
   deny(id) { store.updateRequest(id, { status: "no", by: role, decided: now() }); },
-  openKid(id) { ui.kid = id; ui.screen = "kid"; ui.confirmDel = null; render(); window.scrollTo(0, 0); },
+  openKid(id) { ui.kid = id; ui.screen = "kid"; ui.confirmDel = null; ui.pStart = ""; ui.pStop = ""; ui.pErr = ""; render(); window.scrollTo(0, 0); },
   home() { ui.screen = "home"; ui.draft = null; render(); window.scrollTo(0, 0); },
   openRules() { ui.draft = JSON.parse(JSON.stringify(S.rules)); ui.screen = "rules"; render(); window.scrollTo(0, 0); },
   toggleDay(i) { ui.draft.days[Number(i)] = !ui.draft.days[Number(i)]; render(); },
@@ -628,17 +640,21 @@ const actions = {
   bonus(d) { const t = now(); store.addRequest({ kid: ui.kid, minutes: Number(d), reason: "부모 조정", status: "ok", created: t, by: role, decided: t }); },
   parentStop(id) {
     const s = S.sessions.find(x => x.id === id); if (!s) return;
-    const end = Math.max(s.start + MIN, now() - ui.pStopAgo * MIN);
-    store.updateSession(id, { end, how: "parent", stoppedBy: role }); ui.pStopAgo = 0;
+    const t = now(), end = Math.min(t, pickTs(ui.pStop, t));
+    if (end <= s.start) { ui.pErr = "시작한 시각(" + fmtClock(s.start) + ")보다 뒤로 골라 주세요"; render(); return; }
+    store.updateSession(id, { end, how: "parent", stoppedBy: role }); ui.pStop = ""; ui.pErr = "";
   },
   parentStart() {
     const t = now(), st = kidStatus(kidById(ui.kid), S, t);
     if (st.open) return;
-    store.addSession({ kid: ui.kid, start: t - ui.pAgo * MIN, plan: ui.pPlan, end: null, how: null, by: role }); ui.pAgo = 0;
+    const start = Math.min(t, pickTs(ui.pStart, t));
+    const lastEnd = st.all.reduce((m, x) => Math.max(m, st.endOf(x)), 0);
+    if (start < lastEnd) { ui.pErr = "이전 기록과 겹쳐요. " + fmtClock(lastEnd) + " 이후로 골라 주세요"; render(); return; }
+    if (t - start > 12 * 60 * MIN) { ui.pErr = "12시간보다 더 전은 고를 수 없어요"; render(); return; }
+    store.addSession({ kid: ui.kid, start, plan: ui.pPlan, end: null, how: null, by: role }); ui.pStart = ""; ui.pErr = "";
   },
   pPlan(a) { ui.pPlan = Number(a); render(); },
-  pAgo(a) { ui.pAgo = Number(a); render(); },
-  pStopAgo(a) { ui.pStopAgo = Number(a); render(); },
+  timeNow(k) { ui[k] = ""; ui.pErr = ""; render(); },
   askDel(id) { ui.confirmDel = id; render(); },
   delSession(id) { store.deleteSession(id); ui.confirmDel = null; },
 };
@@ -661,6 +677,10 @@ app.addEventListener("click", e => {
 });
 app.addEventListener("input", e => {
   const k = e.target.dataset && e.target.dataset.input; if (k) ui[k] = e.target.value;
+});
+app.addEventListener("change", e => {
+  const k = e.target.dataset && e.target.dataset.input;
+  if (k === "pStart" || k === "pStop") { ui[k] = e.target.value; ui.pErr = ""; e.target.blur(); render(); }
 });
 app.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "code") actions.redeem(); });
 document.addEventListener("pointerdown", unlockAudio, true);
