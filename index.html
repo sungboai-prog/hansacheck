@@ -55,6 +55,9 @@ textarea{resize:none}
 .stepper{display:flex;align-items:center;justify-content:space-between}
 .round{width:48px;height:48px;border-radius:24px;border:1px solid #D5D8DE;background:#fff;font-size:24px;color:var(--ink)}
 .back{width:44px;height:44px;border:none;background:transparent;border-radius:22px;display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.live{display:inline-block;width:10px;height:10px;border-radius:5px;background:#E5484D;margin-left:6px;vertical-align:middle;animation:blink 1s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.12}}
+@media (prefers-reduced-motion: reduce){.live{animation:none}}
 .err{background:#FDE7E2;color:#A3270F;border-radius:14px;padding:12px 14px;font-size:13px}
 </style>
 </head>
@@ -73,7 +76,8 @@ const KIDS = CFG.KIDS || [
 ];
 const PARENTS = CFG.PARENTS || [ { id: "dad", name: "아빠" }, { id: "mom", name: "엄마" } ];
 const DEFAULT_RULES = CFG.DEFAULT_RULES || { days: [false, false, false, false, true, true, true], total: 480, session: 120, rest: 120 };
-const APP_VERSION = "v5 (11/15)";
+const APP_VERSION = "v6 (11/15)";
+const liveDot = st => st.state === "running" ? `<span class="live" role="img" aria-label="지금 사용 중"></span>` : "";
 const PLAN_STEPS = [30, 60, 90, 120];
 const planLabel = m => m === 90 ? "1시간 반" : fmt(m);
 const TIMER_SHORTCUT = "핸사췍 타이머";
@@ -449,7 +453,7 @@ function viewFamily(t, meId) {
       return `<div class="log" style="align-items:flex-start">
         <span class="avatar" style="background:${k.tint};color:${k.ink};width:34px;height:34px;font-size:14px">${esc(k.name[0])}</span>
         <div class="col" style="flex:1;gap:5px">
-          <div class="row"><span style="font-size:14px;font-weight:700">${esc(k.name)}${k.id === meId ? ' <span class="muted">(나)</span>' : ""}</span>${pill(p[0], p[1], p[2])}</div>
+          <div class="row"><span style="font-size:14px;font-weight:700">${esc(k.name)}${liveDot(st)}${k.id === meId ? ' <span class="muted">(나)</span>' : ""}</span>${pill(p[0], p[1], p[2])}</div>
           <div class="bar" style="height:6px"><div style="width:${Math.min(100, Math.round(st.weekUsed / Math.max(1, st.limit) * 100))}%;background:${k.ink}"></div></div>
           <div class="row" style="font-size:12px"><span class="muted">${fmt(st.weekUsed)} 사용</span><span style="font-weight:700">${fmt(st.weekLeft)} 남음</span></div>
           ${st.state === "running" ? `<div class="muted" style="font-size:12px">${kidLine(st)}</div>` : ""}
@@ -484,12 +488,12 @@ function viewParentHome(t) {
     ${r.reason ? `<div class="muted">“${esc(r.reason)}”</div>` : ""}</div>
     <div class="row"><button class="btn" style="flex:1" data-act="deny" data-arg="${r.id}">거절</button><button class="btn primary" style="flex:2" data-act="approve" data-arg="${r.id}">${fmt(r.minutes)} 승인</button></div>
   </div>`).join("")}
-  <div class="t" style="padding:6px 6px 0">아이들</div>
+  <div class="row" style="padding:6px 6px 0"><div class="t">우리 가족 이번 주</div><div class="muted">아이들 폰에도 똑같이 보여요</div></div>
   ${KIDS.map(k => {
     const st = kidStatus(k, S, t), p = STATE_PILL[st.state];
     return `<button class="kidcard" data-act="openKid" data-arg="${k.id}" aria-label="${esc(k.name)} 자세히 보기">
       <div class="row" style="width:100%"><div class="row" style="justify-content:flex-start"><span class="avatar" style="background:${k.tint};color:${k.ink}">${esc(k.name[0])}</span>
-      <div class="col"><div style="font-size:16px;font-weight:700">${esc(k.name)}</div><div class="muted" style="font-size:12px">${esc(k.sub)}</div></div></div>${pill(p[0], p[1], p[2])}</div>
+      <div class="col"><div style="font-size:16px;font-weight:700">${esc(k.name)}${liveDot(st)}</div><div class="muted" style="font-size:12px">${esc(k.sub)}</div></div></div>${pill(p[0], p[1], p[2])}</div>
       <div style="width:100%;display:flex;flex-direction:column;gap:6px">
         <div class="row" style="font-size:13px"><span style="font-weight:700">이번 주 ${fmt(st.weekUsed)} 사용</span><span class="muted">${fmt(st.weekLeft)} 남음</span></div>
         <div class="bar"><div style="width:${Math.min(100, Math.round(st.weekUsed / Math.max(1, st.limit) * 100))}%;background:${k.ink}"></div></div>
@@ -504,7 +508,7 @@ function viewParentKid(t) {
   const ws = weekStartOf(t);
   const reqs = S.requests.filter(r => r.kid === k.id && r.status === "ok" && r.created >= ws);
   return `
-  <div class="row" style="justify-content:flex-start"><button class="back" aria-label="뒤로" data-act="home">${BACK_SVG}</button><h2>${esc(k.name)}</h2><span class="muted">${esc(k.sub)}</span></div>
+  <div class="row" style="justify-content:flex-start"><button class="back" aria-label="뒤로" data-act="home">${BACK_SVG}</button><h2>${esc(k.name)}${liveDot(st)}</h2><span class="muted">${esc(k.sub)}</span></div>
   <div class="card">
     <div class="row"><div class="col"><div class="muted">이번 주 남은 시간</div><div style="font-size:30px;font-weight:800">${fmt(st.weekLeft)}</div></div>${pill(p[0], p[1], p[2])}</div>
     <div class="bar"><div style="width:${Math.min(100, Math.round(st.weekUsed / Math.max(1, st.limit) * 100))}%;background:${k.ink}"></div></div>
